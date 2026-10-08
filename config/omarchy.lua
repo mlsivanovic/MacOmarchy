@@ -1,6 +1,6 @@
 -- Native macOS Spaces + Hammerspoon tiling. Mouse/clipboard bindings stay in init.lua.
 local M = { hotkeys = {}, tasks = {}, actions = {}, enabled = true }
-local mod, shift = {"ctrl", "alt"}, {"ctrl", "alt", "shift"}
+local mod, shift = {"cmd"}, {"cmd", "shift"}
 local root = hs.configdir .. "/omarchy-assets"
 local previousWindow
 M.desktops = require("desktops")
@@ -23,7 +23,7 @@ end
 local function app(name) return function() hs.application.launchOrFocus(name) end end
 local function keys(modifiers, key)
     return function()
-        local command = (#modifiers==3 and "shift:" or "") .. key
+        local command = (modifiers==shift and "shift:" or "") .. key
         if M.tiler.commands[command] then M.tiler.commands[command]() end
     end
 end
@@ -47,7 +47,7 @@ function M.setTheme(dark)
 end
 
 for _, dir in ipairs({"left", "right", "up", "down"}) do
-    add("Fokus: " .. dir, "Ctrl + Option + " .. dir, function()
+    add("Fokus: " .. dir, "Cmd + " .. dir, function()
         local w = hs.window.focusedWindow()
         if w then
             local method = {left="focusWindowWest",right="focusWindowEast",up="focusWindowNorth",down="focusWindowSouth"}
@@ -56,8 +56,8 @@ for _, dir in ipairs({"left", "right", "up", "down"}) do
     end, mod, dir)
 end
 
-add("Ghostty — terminal", "Ctrl + Option + Return · F12: quick terminal", app("Ghostty"), mod, "return")
-add("Browser — Google Chrome", "Ctrl + Option + Shift + Return", app("Google Chrome"), shift, "return")
+add("Ghostty — terminal", "Cmd + Return · F12: quick terminal", app("Ghostty"), mod, "return")
+add("Browser — Google Chrome", "Cmd + Shift + Return", app("Google Chrome"), shift, "return")
 add("Zed — editor", "Postojeći editor", app("Zed"))
 add("VS Code — editor", "Postojeći editor", app("Visual Studio Code"))
 add("Reminders — podsetnici", "Native macOS", app("Reminders"))
@@ -65,8 +65,8 @@ add("Calendar — kalendar", "Native macOS", app("Calendar"))
 add("System Settings — Focus i sistem", "Native macOS podešavanja", app("System Settings"))
 add("Mission Control — pregled Spaces", "Cmd + middle click", function() hs.spaces.toggleMissionControl() end)
 add("Clipboard istorija", "Cmd + Ctrl + V · postojeća istorija", function() hs.eventtap.keyStroke({"cmd", "ctrl"}, "v", 0) end)
-add("Screenshot — izbor oblasti", "Native Cmd + Shift + 4", function() hs.eventtap.keyStroke({"cmd", "shift"}, "4", 0) end)
-add("Screenshot i snimanje ekrana", "Native Cmd + Shift + 5", function() hs.eventtap.keyStroke({"cmd", "shift"}, "5", 0) end)
+add("Screenshot — izbor oblasti", "Native Screenshot aplikacija", app("Screenshot"))
+add("Screenshot i snimanje ekrana", "Native Screenshot aplikacija", app("Screenshot"))
 add("Zaključaj ekran", "Native macOS", function() hs.caffeinate.lockScreen() end)
 add("Tema — Catppuccin Mocha", "Tamni sistem, terminal, editori i wallpaper", function() M.setTheme(true) end)
 add("Tema — Catppuccin Latte", "Svetli sistem, terminal, editori i wallpaper", function() M.setTheme(false) end)
@@ -87,12 +87,12 @@ local commands = {
     {"Tall/Wide — povećaj glavni panel", "=", mod},
 }
 for _, c in ipairs(commands) do
-    add(c[1], "Ctrl + Option + " .. (#c[3] == 3 and "Shift + " or "") .. c[2], keys(c[3], c[2]),c[3],c[2])
+    add(c[1], "Cmd + " .. (c[3] == shift and "Shift + " or "") .. c[2], keys(c[3], c[2]),c[3],c[2])
 end
 for i = 1, 9 do
-    add("Desktop — " .. i .. " na trenutnom monitoru", "Ctrl + Option + " .. i,
+    add("Desktop — " .. i .. " na trenutnom monitoru", "Cmd + " .. i,
         function() M.desktops.goToNumber(i) end, mod, tostring(i))
-    add("Prozor — prebaci na Desktop " .. i .. " ovog monitora", "Ctrl + Option + Shift + " .. i,
+    add("Prozor — prebaci na Desktop " .. i .. " ovog monitora", "Cmd + Shift + " .. i,
         function() M.desktops.moveWindow(i) end, shift, tostring(i))
 end
 
@@ -156,10 +156,10 @@ M.bar = hs.menubar.new()
 M.bar:setTooltip("macOS Omarchy — komande i native Space")
 M.bar:setMenu(function()
     return {
-        {title="Komande — Ctrl + Option + Space", fn=function() M.show() end},
-        {title="Trenutni layout — Ctrl + Option + I", fn=keys(mod,"i")},
-        {title="Sledeći layout — Ctrl + Option + L", fn=keys(mod,"l")},
-        {title="Floating prozor — Ctrl + Option + T", fn=keys(mod,"t")},
+        {title="Komande — Cmd + Space", fn=function() M.show() end},
+        {title="Trenutni layout — Cmd + I", fn=keys(mod,"i")},
+        {title="Sledeći layout — Cmd + L", fn=keys(mod,"l")},
+        {title="Floating prozor — Cmd + T", fn=keys(mod,"t")},
         {title="Tiling uključi / isključi", fn=keys(shift,"t")},
         {title="-"},
         {title="Catppuccin Mocha", fn=function() M.setTheme(true) end},
