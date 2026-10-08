@@ -1,28 +1,28 @@
 -- ============================================================================
 -- ~/.hammerspoon/init.lua
--- 1. Workspace Switcher: Cmd + Scroll (menjanje Space-ova na trenutnom monitoru)
--- 2. Workspace Overview: Cmd + Middle Click (otvara Mission Control pregled)
--- 3. Window Cycler:      Cmd + Ctrl + Scroll (rotiranje prozora na monitoru)
--- 4. Clipboard Manager:  Cmd + Ctrl + V (istorija 100 stavki sa pretragom)
+-- 1. Workspace Switcher: Cmd + Scroll (switch Spaces on the current display)
+-- 2. Workspace Overview: Cmd + Middle Click (open Mission Control overview)
+-- 3. Window Cycler:      Cmd + Ctrl + Scroll (cycle windows on the display)
+-- 4. Clipboard Manager:  Cmd + Ctrl + V (searchable 100-item history)
 -- ============================================================================
 
 local spaces = require("hs.spaces")
 local desktops = require("desktops")
 
 -- ----------------------------------------------------------------------------
--- SEKCIJA 1: FUNKCIJE ZA SPACE-OVE I MISSION CONTROL
+-- SECTION 1: SPACES AND MISSION CONTROL FUNCTIONS
 -- ----------------------------------------------------------------------------
 local lastSpaceScrollTime = 0
 local lastSpaceScrollConsumed = false
 
 -- Native Dock shortcuts are resolved by desktops.lua for the hovered monitor.
--- Vraća true samo kad se Space stvarno promeni. Ako monitor ima jedan Space,
--- scroll ostaje normalan umesto da se proguta.
+-- Returns true only when a Space transition is handled. With a single Space,
+-- scrolling remains available to the application.
 local function cycleSpaceOnCurrentScreen(direction)
     return desktops.cycle(direction, hs.mouse.getCurrentScreen())
 end
 
--- Otvara / zatvara Workspace Overview (Mission Control)
+-- Open / close Workspace Overview (Mission Control)
 local function toggleWorkspaceOverview()
     if spaces and spaces.toggleMissionControl then
         spaces.toggleMissionControl()
@@ -33,7 +33,7 @@ end
 
 
 -- ----------------------------------------------------------------------------
--- SEKCIJA 2: WATCHERI ZA MIŠ (Scroll & Middle Click)
+-- SECTION 2: MOUSE WATCHERS (Scroll & Middle Click)
 -- ----------------------------------------------------------------------------
 hs_window_cycler = hs_window_cycler or {}
 
@@ -50,7 +50,7 @@ if hs_window_cycler.watchdogTimer then
     pcall(function() hs_window_cycler.watchdogTimer:stop() end)
 end
 
--- Sesija za rotiranje prozora
+-- Window cycling session
 local cycleSession = {
     active = false,
     windows = {},
@@ -66,8 +66,8 @@ local function endCycleSession()
     cycleSession.screenId = nil
 end
 
--- macOS na Cmd+scroll upiše i objedinjeni ctrl bit (staro mapiranje za zoom).
--- Zato se gleda samo fizički taster (device* bit), ne taj objedinjeni ctrl.
+-- macOS adds an aggregate Ctrl bit to Cmd+scroll (legacy zoom mapping).
+-- Read the physical key (device* bit) instead of aggregate Ctrl.
 local function deviceMods(raw)
     local masks = hs.eventtap.event.rawFlagMasks
     local function down(name)
@@ -124,11 +124,11 @@ local function getTargetScreenForWindows()
     return mouseScreen or focusedScreen
 end
 
--- 1. SKROL WATCHER (Cmd + Scroll & Cmd + Ctrl + Scroll)
+-- 1. SCROLL WATCHER (Cmd + Scroll & Cmd + Ctrl + Scroll)
 hs_window_cycler.scrollWatcher = hs.eventtap.new({hs.eventtap.event.types.scrollWheel}, function(e)
     local fromEvent = deviceMods(e:rawFlags())
-    -- Scroll događaj uz Cmd nosi i lažni Ctrl (staro mapiranje za zoom).
-    -- Ctrl/Alt/Shift se proveravaju iz trenutnog stanja fizičkih tastera.
+    -- Cmd scroll events also contain a synthetic Ctrl flag (legacy zoom mapping).
+    -- Read Ctrl/Alt/Shift from the current physical keyboard state.
     -- Poll physical keyboard state for each scroll. A cached flagsChanged event
     -- can leave Ctrl stuck after a synthetic shortcut, routing Cmd+scroll to
     -- the window cycler instead of Spaces. Ignore Ctrl added to scroll events.
@@ -151,7 +151,7 @@ hs_window_cycler.scrollWatcher = hs.eventtap.new({hs.eventtap.event.types.scroll
 
     if dy == 0 and dx == 0 then return false end
 
-    -- CMD + SCROLL -> Promena Workspace-ova na trenutnom monitoru
+    -- CMD + SCROLL -> Switch workspaces on the current display
     if flags.cmd and not (flags.ctrl or flags.alt or flags.shift) then
         if now - lastSpaceScrollTime < 0.35 then
             return lastSpaceScrollConsumed
@@ -163,7 +163,7 @@ hs_window_cycler.scrollWatcher = hs.eventtap.new({hs.eventtap.event.types.scroll
         return lastSpaceScrollConsumed
     end
 
-    -- CMD + CTRL + SCROLL -> Rotiranje prozora na trenutnom monitoru
+    -- CMD + CTRL + SCROLL -> Cycle windows on the current display
     if flags.cmd and flags.ctrl and not (flags.alt or flags.shift) then
         if now - cycleSession.lastTime < 0.18 then
             return true
@@ -234,7 +234,7 @@ hs_window_cycler.scrollWatcher = hs.eventtap.new({hs.eventtap.event.types.scroll
 end)
 hs_window_cycler.scrollWatcher:start()
 
--- 2. SREDNJI KLIK WATCHER (Cmd + Middle Click -> Workspace Overview)
+-- 2. MIDDLE CLICK WATCHER (Cmd + Middle Click -> Workspace Overview)
 local middleClickSwallowed = false
 
 hs_window_cycler.middleClickWatcher = hs.eventtap.new({
@@ -247,7 +247,7 @@ hs_window_cycler.middleClickWatcher = hs.eventtap.new({
 
     if btn == 2 then
         if eventType == hs.eventtap.event.types.otherMouseDown then
-            -- Cmd + Middle Click (bez Ctrl, Alt, Shift)
+            -- Cmd + Middle Click (without Ctrl, Alt, Shift)
             if flags.cmd and not (flags.ctrl or flags.alt or flags.shift) then
                 middleClickSwallowed = true
                 hs.timer.doAfter(0.001, function()
@@ -267,7 +267,7 @@ hs_window_cycler.middleClickWatcher = hs.eventtap.new({
 end)
 hs_window_cycler.middleClickWatcher:start()
 
--- Watchdog tajmer
+-- Watchdog timer
 hs_window_cycler.watchdogTimer = hs.timer.doEvery(5, function()
     if hs_window_cycler.scrollWatcher and not hs_window_cycler.scrollWatcher:isEnabled() then
         hs_window_cycler.scrollWatcher:start()
@@ -282,7 +282,7 @@ end)
 
 
 -- ----------------------------------------------------------------------------
--- SEKCIJA 3: CLIPBOARD MANAGER (Cmd + Ctrl + V)
+-- SECTION 3: CLIPBOARD MANAGER (Cmd + Ctrl + V)
 -- ----------------------------------------------------------------------------
 hs_clipboard = hs_clipboard or {}
 
@@ -357,11 +357,11 @@ end)
 
 hs_clipboard.chooser:searchSubText(true)
 hs_clipboard.chooser:rows(9)
-hs_clipboard.chooser:placeholderText("Pretraži istoriju (kucaj za filtriranje 100 stavki)...")
+hs_clipboard.chooser:placeholderText("Search history (type to filter 100 items)...")
 
 hs_clipboard.hotkey = hs.hotkey.bind({"cmd", "ctrl"}, "v", function()
     if #hs_clipboard.history == 0 then
-        hs.alert.show("Clipboard istorija je prazna")
+        hs.alert.show("Clipboard history is empty")
         return
     end
 
@@ -375,7 +375,7 @@ hs_clipboard.hotkey = hs.hotkey.bind({"cmd", "ctrl"}, "v", function()
 
         table.insert(choices, {
             text = firstLine,
-            subText = string.format("#%d (%d karaktera) • %s", i, #item, preview),
+            subText = string.format("#%d (%d characters) • %s", i, #item, preview),
             fullText = item
         })
     end
@@ -386,4 +386,4 @@ end)
 
 -- ============================================================================
 omarchy = require("omarchy")
-hs.alert.show("Hammerspoon + macOS Omarchy su spremni!")
+hs.alert.show("Hammerspoon + macOS Omarchy are ready!")

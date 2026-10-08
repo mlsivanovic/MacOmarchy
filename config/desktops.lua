@@ -18,7 +18,7 @@ function D.moveToSpace(window, target, callback)
         for _,space in ipairs(hs.spaces.windowSpaces(id) or {}) do if space==target then done=true end end
         if done or checks>=20 then
             timer:stop();D.moves[id]=nil
-            if not done then hs.alert.show("macOS nije premestio prozor na izabrani desktop.") end
+            if not done then hs.alert.show("macOS did not move the window to the selected desktop.") end
             if callback then callback(done) end
         end
     end)
@@ -63,7 +63,7 @@ local function focusScreen(screen)
         end
     end
     -- No visible window exists here. Click the empty desktop to give this
-    -- monitor keyboard focus; the 2px edge lies outside the 8px tiled margin.
+    -- monitor keyboard focus; the 2px edge lies outside the 4px tiled margin.
     placedMouse = {x=frame.x+2, y=frame.y+frame.h/2}
     hs.eventtap.leftClick(placedMouse)
 end
@@ -103,14 +103,14 @@ function D.goToID(screen, target, completion)
         if pendingSpace then
             if current == pendingSpace then pendingSpace=nil
             elseif hs.timer.secondsSinceEpoch() < deadline then return
-            else finish("Native promena desktopa nije uspela na izabranom monitoru."); return end
+            else finish("Native desktop switching failed on the selected display."); return end
         end
         local currentIndex
         for i,id in ipairs(all) do if id == current then currentIndex=i end end
-        if not currentIndex or attempts >= #all+1 then finish("Desktop više nije dostupan."); return end
+        if not currentIndex or attempts >= #all+1 then finish("The desktop is no longer available."); return end
         local delta = currentIndex < targetIndex and 1 or -1
         local shortcut = nativeShortcut(delta == 1 and "right" or "left")
-        if not shortcut then finish("Uključi Move left/right a space u macOS Keyboard → Mission Control."); return end
+        if not shortcut then finish("Enable Move left/right a space in macOS Keyboard → Mission Control."); return end
         focusScreen(screen)
         pendingSpace = all[currentIndex+delta]
         deadline = hs.timer.secondsSinceEpoch()+2
@@ -131,7 +131,7 @@ end
 function D.goToNumber(number, screen)
     screen = screen or D.keyboardScreen()
     local target = D.userSpaces(screen)[number]
-    if not target then hs.alert.show("Na ovom monitoru ne postoji Desktop " .. number); return false end
+    if not target then hs.alert.show("This display does not have Desktop " .. number); return false end
     return D.goToID(screen, target)
 end
 
@@ -150,7 +150,7 @@ end
 -- requesting another, and close Mission Control once for the whole batch.
 function D.ensureNumber(number, screen, callback)
     if type(number)~="number" or number%1~=0 or number<1 or number>9 then
-        callback(nil,"Broj desktopa mora biti 1–9.");return false
+        callback(nil,"The desktop number must be 1–9.");return false
     end
     local target=D.userSpaces(screen)[number]
     if target then callback(target);return true end
@@ -170,14 +170,14 @@ function D.ensureNumber(number, screen, callback)
         if pendingCount then
             if #list>pendingCount then pendingCount=nil
             elseif hs.timer.secondsSinceEpoch()<deadline then return
-            else complete(nil,"macOS nije kreirao novi desktop na ovom monitoru.");return end
+            else complete(nil,"macOS did not create a new desktop on this display.");return end
         end
         local called,ok,err=pcall(missionControl.add,screen)
         if called and not ok and err=="pending" then
-            if hs.timer.secondsSinceEpoch()>=readyDeadline then complete(nil,"Mission Control nije prikazao izabrani monitor.") end
+            if hs.timer.secondsSinceEpoch()>=readyDeadline then complete(nil,"Mission Control did not show the selected display.") end
             return
         end
-        if not called or not ok then complete(nil,tostring(err or ok or "Desktop nije kreiran."));return end
+        if not called or not ok then complete(nil,tostring(err or ok or "The desktop was not created."));return end
         pendingCount=#list
         deadline=hs.timer.secondsSinceEpoch()+3
         readyDeadline=deadline
@@ -188,10 +188,10 @@ function D.ensureNumber(number, screen, callback)
 end
 
 function D.moveWindow(number)
-    if D.busy or D.transfer then hs.alert.show("Sačekaj završetak prebacivanja desktopa.");return false end
+    if D.busy or D.transfer then hs.alert.show("Wait for the desktop transition to finish.");return false end
     local window = hs.window.focusedWindow()
     if not window or not window:isStandard() or window:isFullScreen() then
-        hs.alert.show("Izaberi običan prozor za premeštanje."); return false
+        hs.alert.show("Select a standard window to move."); return false
     end
     local screen = window:screen()
     D.transfer=true

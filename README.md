@@ -1,130 +1,141 @@
-# macOS sa Omarchy načinom rada
+# macOS with an Omarchy workflow
 
-Native macOS Spaces i Mission Control ostaju osnova. Postojeći Hammerspoon
-sada vodi i tiling, centralni meni i prečice. Ghostty ostaje terminal.
-Amethyst je zaustavljen i uklonjen iz automatskog pokretanja.
+An Omarchy-inspired macOS setup built around native Spaces and Mission Control.
+Hammerspoon handles tiling, a searchable command menu, keyboard shortcuts and mouse
+gestures. Ghostty is the terminal. Amethyst is disabled and removed from login startup.
 
-## Prečice
+## Keyboard shortcuts
 
-Za prečice koje se kose sa standardnim macOS ili aplikacijskim komandama
-koristi se **Control + Option**. Cmd+Space, Cmd+W, standardne komande za tekst,
-tabove i zoom ostaju native. Cmd ostaje za launchere i gestove mišem.
+**Control + Option** handles commands that conflict with standard macOS or application
+shortcuts. Cmd+Space and Cmd+W retain their native behavior. Cmd+number and
+Cmd+Shift+number are explicit exceptions that override application tab selection
+and the default screenshot shortcuts.
 
-| Prečica | Akcija |
+| Shortcut | Action |
 |---|---|
 | Cmd + Return | Ghostty |
 | Cmd + Shift + Return | Google Chrome |
-| Ctrl + Option + Space / K | Pretraživi centralni meni |
-| Ctrl + Option + strelice | Fokus susednog prozora na trenutnom monitoru |
-| Ctrl + Option + L / Shift + L | Sledeći / prethodni layout |
+| Ctrl + Option + Space / K | Searchable command menu |
+| Ctrl + Option + arrows | Focus a neighboring window on the current display |
+| Ctrl + Option + L / Shift + L | Next / previous layout |
 | Ctrl + Option + A / W | Tall / Wide |
-| Ctrl + Option + F | Prozor preko cele radne površine |
-| Ctrl + Option + Shift + F | Floating layout za ručno raspoređivanje |
-| Ctrl + Option + T | Floating toggle aktivnog prozora |
-| Ctrl + Option + Shift + T | Globalni tiling uključi / isključi |
-| Ctrl + Option + I / R | Prikaži layout / ponovo rasporedi |
-| Ctrl + Option + Shift + ← / → | Zameni sa prethodnim / sledećim prozorom |
-| Ctrl + Option + Shift + ↑ / ↓ | Premesti na prethodni / sledeći monitor |
-| Ctrl + Option + M | Zameni sa glavnim prozorom |
-| Ctrl + Option + − / = | Smanji / povećaj glavni panel |
-| Cmd + 1–9 | Desktop na monitoru fokusiranog prozora |
-| Cmd + Shift + 1–9 | Pošalji prozor na desktop istog monitora i pređi tamo |
-| Cmd + scroll | Kruženje kroz desktopove monitora ispod miša |
+| Ctrl + Option + F | Fill the working area with one window |
+| Ctrl + Option + Shift + F | Floating layout for manual arrangement |
+| Ctrl + Option + T | Toggle floating for the active window |
+| Ctrl + Option + Shift + T | Enable / disable automatic tiling |
+| Ctrl + Option + I / R | Show the layout / reflow windows |
+| Ctrl + Option + Shift + ← / → | Swap with the previous / next window |
+| Ctrl + Option + Shift + ↑ / ↓ | Move to the previous / next display |
+| Ctrl + Option + M | Swap with the main window |
+| Ctrl + Option + − / = | Shrink / expand the main pane |
+| Cmd + 1–9 | Switch desktop on the focused window's display |
+| Cmd + Shift + 1–9 | Move the window to a desktop on the same display and follow it |
+| Cmd + scroll | Cycle desktops on the display under the pointer |
 | Cmd + middle click | Mission Control |
-| Cmd + Ctrl + scroll | Rotiranje prozora na monitoru |
-| Cmd + Ctrl + V | Clipboard istorija |
+| Cmd + Ctrl + scroll | Cycle windows on a display |
+| Cmd + Ctrl + V | Clipboard history |
 | F12 | Ghostty quick terminal |
 | Cmd + Space | Native Spotlight |
-| Cmd + W | Native zatvaranje prozora / taba |
-| Screenshot u centralnom meniju | Native screenshot / snimanje |
+| Cmd + W | Native window / tab closing |
+| Screenshot in the command menu | Native screenshots / screen recording |
 
-Cmd+broj menja desktop, dok Cmd+Shift+broj premešta aktivni prozor i
-prati ga na odredišni desktop istog monitora. Ako odredišni broj ne postoji,
-kreiraju se svi desktopovi koji nedostaju do tog broja (npr. sa dva na pet:
-kreiraju se 3, 4 i 5). Kreiranje koristi native Mission Control, koji se kratko
-prikaže. Proveravaju se kreiranje, pripadnost prozora desktopu i promena prikaza.
+Cmd+number switches to an existing desktop. Cmd+Shift+number moves the active
+window and follows it. If the destination does not exist, every missing desktop
+up to that number is created. Moving from a display with two desktops to Desktop 5
+creates desktops 3, 4 and 5. Creation briefly opens native Mission Control.
+Desktop creation, window membership and the final active desktop are verified.
 
-Cmd+Shift+3/4/5 sada služe za premeštanje prozora. Native screenshot/snimač
-ostaje dostupan kroz centralni meni ili macOS Screenshot aplikaciju.
-Cmd+Space je Spotlight; Cmd+W ostaje native. Cmd+broj je izuzetak:
-menja desktop i preuzima prečice za izbor tabova u aplikacijama.
+Desktop numbers are local to each display and skip fullscreen Spaces. Navigation
+alone does not create desktops. Moving affects the active window rather than all
+windows of its application. A failed creation or move stops the operation and
+shows a notification.
 
-Brojevi desktopova su lokalni za monitor i preskaču fullscreen Spaces.
-Cmd+broj sam ne kreira desktopove. Premešta se aktivni prozor
-aplikacije, ne svi njeni prozori. Ako kreiranje ili slanje ne uspe, prikazuje
-se obaveštenje i operacija staje.
+Cmd+Shift+3/4/5 are reserved for moving windows. Screenshots and recording remain
+available through the command menu or the macOS Screenshot app.
 
-## Automatski raspored
+## Automatic tiling
 
-- Jedan običan prozor popunjava radnu površinu uz marginu 4 px.
-- Razmak između prozora je 4 px.
-- Dva prozora dele ekran 50/50; dodatni prozori se slažu u sekundarni panel.
-- Svaki monitor i svaki native desktop imaju zaseban raspored.
-- Posle prelaska na drugi monitor prozor se pridružuje njegovom aktivnom
-  desktopu i raspoređuje zajedno sa tamošnjim prozorima.
-- Tiling miruje dok se drži levi taster miša, pa se primeni po završetku drag-a.
-- Provera prozora na 0,5 s pokriva otvaranje, zatvaranje i promene desktopa.
-- Ciklus rasporeda: Tall → Wide → Fullscreen → Floating.
-- Dijalozi, fullscreen/minimizovani prozori, System Settings, Hammerspoon,
-  KeePassXC i eksplicitno floating prozori ne zauzimaju pločicu.
-- Native Shortcuts za poslednja 2–4 prozora dostupni su iz menija uz Floating layout.
+- One standard window fills the working area with a 4 px outer margin.
+- Windows have a 4 px gap between them.
+- Two windows split the screen 50/50; additional windows stack in the secondary pane.
+- Each display and each native desktop has its own arrangement.
+- A window dragged to another display joins its active desktop and tiles with its windows.
+- Tiling pauses while the left mouse button is held and resumes when dragging finishes.
+- A 0.5-second polling interval covers window creation, closure and desktop transitions.
+- Layout cycle: Tall → Wide → Fullscreen → Floating.
+- Dialogs, fullscreen/minimized windows, System Settings, Hammerspoon, KeePassXC
+  and explicitly floating windows do not occupy tiles.
+- Existing native Shortcuts for arranging the last 2–4 windows are available from
+  the menu after switching to Floating layout.
 
-Cmd + scroll šalje stvarne Dock prečice, sa tačnim keycode/flags iz postojećih
-macOS podešavanja. Pointer se kratko postavi na ciljani monitor pa vrati ako ga
-korisnik nije pomerio. Move left/right a space moraju biti uključeni u
-System Settings → Keyboard → Keyboard Shortcuts → Mission Control.
-Automatsko preslaganje redosleda Spaces je isključeno.
+Cmd+scroll sends the real Dock shortcuts using keycodes and flags from the current
+macOS settings. The pointer briefly moves to the destination display, then returns
+unless the user has moved it. Enable **Move left/right a space** in
+System Settings → Keyboard → Keyboard Shortcuts → Mission Control. Disable
+**Automatically rearrange Spaces based on most recent use** and enable
+**Displays have separate Spaces** for consistent per-display numbering.
 
-Za slanje prozora na ovoj verziji macOS-a mali lokalni modul koristi noviji
-SkyLight bridged API unutar Hammerspoon procesa, uz postojeću Accessibility
-dozvolu. Rezultat se proverava preko stvarne pripadnosti prozora Space-u.
-Nema Dock injection-a ili promene SIP-a. Ovo je privatni macOS API i potrebno
-je ponoviti proveru posle većih macOS nadogradnji. Amethyst i Tiles ne treba
-pokretati paralelno sa ovim tilingom.
+Window movement uses a small local module calling the newer SkyLight bridged API
+inside Hammerspoon, with its existing Accessibility permission. The result is
+verified through actual Space membership. This uses a private macOS API without
+Dock injection or SIP changes; validate it after major macOS upgrades. Do not run
+Amethyst or Tiles alongside this tiler.
 
-## Izgled i pokretanje
+## Appearance and startup
 
-Catppuccin Mocha/Latte u meniju menjaju sistemski dark/light i wallpaper.
-Ghostty, Zed i VS Code prate sistemsku temu. Ostaje JetBrainsMono Nerd Font Mono.
-Ghostty i Hammerspoon se pokreću pri prijavi preko lokalnih LaunchAgent fajlova.
+The Catppuccin Mocha/Latte menu actions change the system appearance and wallpaper.
+Ghostty, Zed and VS Code follow the system theme. The font is JetBrainsMono Nerd
+Font Mono. Ghostty and Hammerspoon start at login using local LaunchAgents.
 
-## Fajlovi
+## Files and setup
 
-| Izvor | Aktivna lokacija |
+This repository contains configuration files, not a complete automatic installer.
+Back up existing settings before copying files and merge editor appearance settings
+into your existing configuration. Install dependencies from the Brewfile, then
+configure Hammerspoon's Accessibility permission through macOS System Settings.
+
+| Source | Active location / purpose |
 |---|---|
 | config/hammerspoon/init.lua | ~/.hammerspoon/init.lua |
 | config/omarchy.lua, desktops.lua, tiler.lua, mission-control.lua | ~/.hammerspoon/ |
-| config/hammerspoon/space-move.m | Izvor lokalnog native modula |
-| bin/build-space-move | Kompajlira ~/.hammerspoon/bin/space-move.so |
+| config/hammerspoon/space-move.m | Source for the local native module |
+| bin/build-space-move | Builds ~/.hammerspoon/bin/space-move.so |
 | config/ghostty.config | ~/.config/ghostty/config.ghostty |
 | config/catppuccin-zed.json | ~/.config/zed/themes/catppuccin.json |
-| config/editor-appearance.json | Izgled dodat u postojeća editor podešavanja |
+| config/editor-appearance.json | Appearance settings to merge into editor settings |
 | config/mocha.png, config/latte.png | ~/.hammerspoon/omarchy-assets/ |
 | config/local.mac-omarchy.*.plist | ~/Library/LaunchAgents/ |
 
-`config/legacy/` čuva neaktivnu Amethyst konfiguraciju i stari Spaces helper.
-Native modul možeš ponovo kompajlirati sa `./bin/build-space-move`, a konfiguraciju
-učitati preko Hammerspoon Reload Config. Behavioral testovi: `lua tests/tiler.lua`, `lua tests/desktops.lua` i
-`lua tests/mission-control.lua`.
+`config/legacy/` contains inactive Amethyst configuration and the older Spaces helper.
+Build the native module with `./bin/build-space-move` (requires Apple's command-line
+developer tools and Hammerspoon installed in `/Applications`). Reload the configuration
+using Hammerspoon's **Reload Config** command.
 
-## Rezervna kopija i povratak
+Run the behavioral tests with Lua:
 
-Početna kopija navedena je u `backup-location.txt` i nije u Git istoriji.
-Kopija pre ove popravke: `~/.config/mac-omarchy/backups/20261008-201327-fixes/`.
-Clipboard istorija nije kopirana u projekat.
+```sh
+lua tests/tiler.lua
+lua tests/desktops.lua
+lua tests/mission-control.lua
+```
 
-Za povratak prethodnog Hammerspoon ponašanja vrati `hammerspoon-init.lua` iz
-početne kopije na `~/.hammerspoon/init.lua`, pa Reload Config. Za povratak celog
-izgleda vrati i editor settings iz kopije i izaberi sistemski izgled/wallpaper.
-LaunchAgent fajlove možeš premestiti van `~/Library/LaunchAgents` i odjaviti se.
-Postojeće aplikacije nisu brisane. Neaktivni Amethyst LaunchAgent sačuvan je u
+## Backups and rollback
+
+Local backup locations are kept outside Git in `backup-location.txt` and
+`~/.config/mac-omarchy/backups/`. Clipboard history is not included in this repository.
+
+Restore your backed-up Hammerspoon configuration to `~/.hammerspoon/init.lua`, then
+reload it. Restore editor settings and your previous system appearance/wallpaper
+as needed. Move the LaunchAgent files out of `~/Library/LaunchAgents` and log out
+to remove their login startup behavior. Existing applications are retained.
+The disabled Amethyst LaunchAgent is stored locally at
 `~/.config/mac-omarchy/local.mac-omarchy.amethyst.disabled.plist`.
 
-## Izvori
+## References
 
-- [Hammerspoon](https://www.hammerspoon.org/docs/) — window, screen, Space i event API.
-- [Hammerspoon issue 3897](https://github.com/Hammerspoon/hammerspoon/issues/3897) — Mission Control AX struktura na macOS 27; lokalni adapter čita WindowManager.
-- [Hammerspoon issue 3636](https://github.com/Hammerspoon/hammerspoon/issues/3636) — legacy moveWindowToSpace prijavljuje uspeh bez pomeranja.
-- [yabai Space manager](https://github.com/asmvik/yabai/blob/master/src/space_manager.c) — noviji bridged Space API, referenca za lokalni adapter.
-- [Catppuccin za Zed](https://github.com/catppuccin/zed) — tema, MIT licenca.
-- [Ghostty dokumentacija](https://ghostty.org/docs/config) — postojeća konfiguracija.
+- [Hammerspoon](https://www.hammerspoon.org/docs/) — window, screen, Space and event APIs.
+- [Hammerspoon issue 3897](https://github.com/Hammerspoon/hammerspoon/issues/3897) — macOS 27 Mission Control AX structure; the local adapter reads WindowManager.
+- [Hammerspoon issue 3636](https://github.com/Hammerspoon/hammerspoon/issues/3636) — legacy moveWindowToSpace can report success without moving the window.
+- [yabai Space manager](https://github.com/asmvik/yabai/blob/master/src/space_manager.c) — reference for the newer bridged Space API.
+- [Catppuccin for Zed](https://github.com/catppuccin/zed) — theme, MIT license (see LICENSE.catppuccin).
+- [Ghostty documentation](https://ghostty.org/docs/config) — terminal configuration.

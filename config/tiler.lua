@@ -111,13 +111,13 @@ end
 function E.toggleFloat()
     local w=hs.window.focusedWindow();if not w then return end
     E.floating[w:id()]=not E.floating[w:id()];E.reflow()
-    hs.alert.show(E.floating[w:id()] and "Floating prozor" or "Tiled prozor")
+    hs.alert.show(E.floating[w:id()] and "Floating window" or "Tiled window")
 end
 function E.toggle()
-    E.enabled=not E.enabled;E.reflow();hs.alert.show(E.enabled and "Tiling uključen" or "Tiling isključen")
+    E.enabled=not E.enabled;E.reflow();hs.alert.show(E.enabled and "Tiling enabled" or "Tiling disabled")
 end
 function E.showLayout()
-    local g=currentGroup();hs.alert.show(E.enabled and (g and g.layout or "tall") or "Tiling isključen")
+    local g=currentGroup();hs.alert.show(E.enabled and (g and g.layout or "tall") or "Tiling disabled")
 end
 function E.resize(delta)
     local g=currentGroup();if not g then return end
