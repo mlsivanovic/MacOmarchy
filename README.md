@@ -42,7 +42,7 @@ zamena baš sa susedom u tom smeru. Fokus strelicama jeste geometrijski.
 ## Rasporedi i izgled
 
 - Layout ciklus: BSP → Tall → Wide → Fullscreen → Floating.
-- Unutrašnji razmak je 8 px; margina 4 px plus padding 4 px na ivicama.
+- Unutrašnji razmak je 8 px; polovina razmaka plus padding 4 px na ivicama.
 - Mali prozori, System Settings, Hammerspoon i KeePassXC ostaju floating.
 - Teme u meniju: Catppuccin Mocha i Latte. Menjaju sistemski dark/light mode i
   wallpaper na povezanim ekranima. Ghostty, Zed i VS Code prate sistemsku temu.
@@ -69,6 +69,8 @@ pri prijavi. To ne zahteva gašenje SIP-a.
 | config/mocha.png, config/latte.png | ~/.hammerspoon/omarchy-assets/ |
 | config/local.mac-omarchy.*.plist | ~/Library/LaunchAgents/ |
 
+Originalni Spaces helper i prošireni init.lua sačuvani su u `config/hammerspoon/`.
+
 Postojeći init.lua je proširen sa `omarchy = require("omarchy")`.
 Postojeći privatni macOS Spaces helper nije menjan. Potrebno ga je proveriti
 posle macOS nadogradnji.
@@ -80,7 +82,7 @@ Kopija sadrži originalni Hammerspoon init, Ghostty config, editor settings i
 izvezena sistemska podešavanja pre ove promene. Clipboard istorija nije kopirana
 u ovaj projekat.
 
-Za povratak prethodnog ponašanja: ugasi Amethyst, ukloni njegova tri
+Za povratak prethodnog ponašanja: ugasi Amethyst, ukloni tri
 `local.mac-omarchy.*` LaunchAgent fajla iz `~/Library/LaunchAgents`, vrati
 `hammerspoon-init.lua` iz kopije na `~/.hammerspoon/init.lua`, pa Reload Config.
 Vrati Zed/VS Code settings iz kopije ako želiš prethodni izgled. Sistemski izgled
