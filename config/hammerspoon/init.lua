@@ -7,6 +7,7 @@
 -- ============================================================================
 
 local spaces = require("hs.spaces")
+local desktops = require("desktops")
 
 -- ----------------------------------------------------------------------------
 -- SEKCIJA 1: FUNKCIJE ZA SPACE-OVE I MISSION CONTROL
@@ -14,21 +15,11 @@ local spaces = require("hs.spaces")
 local lastSpaceScrollTime = 0
 local lastSpaceScrollConsumed = false
 
--- Menja Space direktno na jednom monitoru. hs.spaces.gotoSpace otvara Mission
--- Control i na novijem macOS-u klikne pogrešan element, pa izgleda kao rotiranje
--- prozora. SLSManagedDisplaySetCurrentSpace menja samo taj ekran.
-local spaceSwitchBin = os.getenv("HOME") .. "/.hammerspoon/bin/space-switch"
-
-local function shQuote(value)
-    return "'" .. tostring(value):gsub("'", "'\\''") .. "'"
-end
-
+-- Native Dock shortcuts are resolved by desktops.lua for the hovered monitor.
 -- Vraća true samo kad se Space stvarno promeni. Ako monitor ima jedan Space,
 -- scroll ostaje normalan umesto da se proguta.
 local function cycleSpaceOnCurrentScreen(direction)
-    local which = direction > 0 and "next" or "prev"
-    local _, ok = hs.execute(shQuote(spaceSwitchBin) .. " " .. which)
-    return ok == true
+    return desktops.cycle(direction, hs.mouse.getCurrentScreen())
 end
 
 -- Otvara / zatvara Workspace Overview (Mission Control)
@@ -137,12 +128,16 @@ end
 hs_window_cycler.scrollWatcher = hs.eventtap.new({hs.eventtap.event.types.scrollWheel}, function(e)
     local fromEvent = deviceMods(e:rawFlags())
     -- Scroll događaj uz Cmd nosi i lažni Ctrl (staro mapiranje za zoom).
-    -- Ctrl/Alt/Shift se računaju samo iz flagsChanged, gde su device bitovi tačni.
+    -- Ctrl/Alt/Shift se proveravaju iz trenutnog stanja fizičkih tastera.
+    -- Poll physical keyboard state for each scroll. A cached flagsChanged event
+    -- can leave Ctrl stuck after a synthetic shortcut, routing Cmd+scroll to
+    -- the window cycler instead of Spaces. Ignore Ctrl added to scroll events.
+    local live = deviceMods(hs.eventtap.checkKeyboardModifiers(true)._raw or 0)
     local flags = {
-        cmd = physMods.cmd or fromEvent.cmd,
-        ctrl = physMods.ctrl,
-        alt = physMods.alt,
-        shift = physMods.shift,
+        cmd = live.cmd or fromEvent.cmd,
+        ctrl = live.ctrl,
+        alt = live.alt,
+        shift = live.shift,
     }
     local now = hs.timer.secondsSinceEpoch()
 

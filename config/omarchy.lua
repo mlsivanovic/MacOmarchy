@@ -1,8 +1,15 @@
--- macOS Spaces + Amethyst. Existing mouse/clipboard bindings stay in init.lua.
+-- Native macOS Spaces + Hammerspoon tiling. Mouse/clipboard bindings stay in init.lua.
 local M = { hotkeys = {}, tasks = {}, actions = {}, enabled = true }
 local mod, shift = {"ctrl", "alt"}, {"ctrl", "alt", "shift"}
 local root = hs.configdir .. "/omarchy-assets"
 local previousWindow
+M.desktops = require("desktops")
+M.tiler = require("tiler")
+
+function M.reflow()
+    M.tiler.reflow()
+end
+M.desktops.afterChange = M.reflow
 
 local function task(bin, args)
     local t
@@ -16,11 +23,8 @@ end
 local function app(name) return function() hs.application.launchOrFocus(name) end end
 local function keys(modifiers, key)
     return function()
-        if not hs.application.get("Amethyst") then
-            hs.alert.show("Pokreni Amethyst i uključi Accessibility dozvolu.")
-            return
-        end
-        hs.eventtap.keyStroke(modifiers, key, 0)
+        local command = (#modifiers==3 and "shift:" or "") .. key
+        if M.tiler.commands[command] then M.tiler.commands[command]() end
     end
 end
 
@@ -69,7 +73,7 @@ add("Tema — Catppuccin Latte", "Svetli sistem, terminal, editori i wallpaper",
 
 local commands = {
     {"Layout — sledeći", "l", mod}, {"Layout — prethodni", "l", shift},
-    {"Layout — BSP", "b", mod}, {"Layout — Tall", "a", mod},
+    {"Layout — Tall", "a", mod},
     {"Layout — Wide", "w", mod}, {"Layout — jedan prozor", "f", mod},
     {"Layout — Floating / ručni raspored", "f", shift},
     {"Prozor — floating toggle", "t", mod}, {"Tiling — uključi / isključi", "t", shift},
@@ -83,20 +87,52 @@ local commands = {
     {"Tall/Wide — povećaj glavni panel", "=", mod},
 }
 for _, c in ipairs(commands) do
-    add(c[1], "Ctrl + Option + " .. (#c[3] == 3 and "Shift + " or "") .. c[2], keys(c[3], c[2]))
+    add(c[1], "Ctrl + Option + " .. (#c[3] == 3 and "Shift + " or "") .. c[2], keys(c[3], c[2]),c[3],c[2])
 end
 for i = 1, 9 do
-    add("Prozor — prebaci na Space " .. i, "Ctrl + Option + Shift + " .. i, keys(shift, tostring(i)))
+    add("Desktop — " .. i .. " na trenutnom monitoru", "Ctrl + Option + " .. i,
+        function() M.desktops.goToNumber(i) end, mod, tostring(i))
+    add("Prozor — prebaci na Desktop " .. i .. " ovog monitora", "Ctrl + Option + Shift + " .. i,
+        function() M.desktops.moveWindow(i) end, shift, tostring(i))
 end
 
--- Native Shortcuts are only run after Amethyst is put into Floating layout.
+-- React to cross-monitor moves after the drag settles.
+-- Only react to actual monitor changes, not every frame produced by tiling.
+M.windowScreens = {}
+local function rememberScreen(window)
+    local screen = window:screen()
+    if screen then M.windowScreens[window:id()] = screen:id() end
+end
+for _, window in ipairs(hs.window.allWindows()) do rememberScreen(window) end
+local function delayedReflow()
+    if M.dragTimer then M.dragTimer:stop() end
+    M.dragTimer = hs.timer.doAfter(0.25, function()
+        if hs.eventtap.checkMouseButtons().left then delayedReflow(); return end
+        M.reflow()
+    end)
+end
+M.windowFilter = hs.window.filter.new()
+M.windowFilter:subscribe(hs.window.filter.windowCreated, rememberScreen)
+M.windowFilter:subscribe(hs.window.filter.windowDestroyed, function(window)
+    M.windowScreens[window:id()] = nil
+end)
+M.windowFilter:subscribe(hs.window.filter.windowMoved, function(window)
+    local screen = window:screen()
+    if not screen then return end
+    local id, oldScreen = window:id(), M.windowScreens[window:id()]
+    M.windowScreens[id] = screen:id()
+    if oldScreen and oldScreen ~= screen:id() then delayedReflow() end
+end)
+M.spaceWatcher = hs.spaces.watcher.new(delayedReflow):start()
+
+-- Native Shortcuts run after automatic tiling is put into Floating layout.
 for n = 2, 4 do
     add("Ručni raspored — poslednja " .. n .. " prozora", "Floating layout, pa postojeći native Shortcut", function()
         keys(shift, "f")()
         hs.timer.doAfter(0.3, function() task("/usr/bin/shortcuts", {"run", "Tile Last " .. n .. " Windows"}) end)
     end)
 end
-add("Pokreni Amethyst", "Automatski tiling", app("Amethyst"))
+add("Tiling — automatski raspored", "Hammerspoon · Tall", function() M.tiler.enabled=true;M.tiler.setLayout("tall") end)
 add("Ponovo učitaj Hammerspoon", "Učitaj izmene konfiguracije", function() hs.reload() end)
 
 M.chooser = hs.chooser.new(function(choice)
@@ -135,7 +171,7 @@ function M.updateStatus()
     local index = "?"
     if screen then
         local current = hs.spaces.activeSpaceOnScreen(screen)
-        local all = hs.spaces.spacesForScreen(screen) or {}
+        local all = M.desktops.userSpaces(screen)
         for i, id in ipairs(all) do if id == current then index = tostring(i); break end end
     end
     M.bar:setTitle("⌘ " .. index)

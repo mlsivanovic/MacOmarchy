@@ -65,42 +65,15 @@
     "mod": "mod1",
     "key": "m"
   },
-  "throw-space-1": {
-    "mod": "mod2",
-    "key": "1"
-  },
-  "throw-space-2": {
-    "mod": "mod2",
-    "key": "2"
-  },
-  "throw-space-3": {
-    "mod": "mod2",
-    "key": "3"
-  },
-  "throw-space-4": {
-    "mod": "mod2",
-    "key": "4"
-  },
-  "throw-space-5": {
-    "mod": "mod2",
-    "key": "5"
-  },
-  "throw-space-6": {
-    "mod": "mod2",
-    "key": "6"
-  },
-  "throw-space-7": {
-    "mod": "mod2",
-    "key": "7"
-  },
-  "throw-space-8": {
-    "mod": "mod2",
-    "key": "8"
-  },
-  "throw-space-9": {
-    "mod": "mod2",
-    "key": "9"
-  },
+  "throw-space-1": false,
+  "throw-space-2": false,
+  "throw-space-3": false,
+  "throw-space-4": false,
+  "throw-space-5": false,
+  "throw-space-6": false,
+  "throw-space-7": false,
+  "throw-space-8": false,
+  "throw-space-9": false,
   "throw-space-10": false,
   "throw-space-left": false,
   "throw-space-right": false,
@@ -123,7 +96,6 @@
   "toggle-focus-follows-mouse": false,
   "relaunch-amethyst": false,
   "layouts": [
-    "bsp",
     "tall",
     "wide",
     "fullscreen",
@@ -144,7 +116,7 @@
   "screen-padding-right": 4,
   "screen-padding-top": 4,
   "screen-padding-bottom": 4,
-  "float-small-windows": true,
+  "float-small-windows": false,
   "small-window-size": 500,
   "floating": [
     "com.apple.systempreferences",
@@ -157,13 +129,12 @@
   "enables-layout-hud": true,
   "enables-layout-hud-on-space-change": false,
   "window-resize-step": 5,
-  "restore-layouts-on-launch": true,
-  "select-bsp-layout": {
-    "mod": "mod1",
-    "key": "b"
-  },
+  "restore-layouts-on-launch": false,
+  "select-bsp-layout": false,
   "select-floating-layout": {
     "mod": "mod2",
     "key": "f"
-  }
+  },
+  "mouse-swaps-windows": true,
+  "mouse-resizes-windows": true
 }

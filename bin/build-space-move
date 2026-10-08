@@ -1,0 +1,8 @@
+#!/bin/zsh
+set -eu
+project_dir=${0:A:h:h}
+output_dir=${1:-$HOME/.hammerspoon/bin}
+mkdir -p "$output_dir"
+clang -Wall -Wextra -fobjc-arc -bundle -undefined dynamic_lookup -framework Foundation \
+  -I/Applications/Hammerspoon.app/Contents/Frameworks/LuaSkin.framework/Headers \
+  "$project_dir/config/hammerspoon/space-move.m" -o "$output_dir/space-move.so"
