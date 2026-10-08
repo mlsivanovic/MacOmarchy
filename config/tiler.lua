@@ -27,7 +27,7 @@ local function different(a,b)
     return math.abs(a.x-b.x)>2 or math.abs(a.y-b.y)>2 or math.abs(a.w-b.w)>2 or math.abs(a.h-b.h)>2
 end
 local function rects(frame,n,layout,ratio)
-    local gap=8
+    local gap=4
     local f={x=frame.x+gap,y=frame.y+gap,w=frame.w-2*gap,h=frame.h-2*gap}
     if n==1 or layout=="fullscreen" then
         local out={};for i=1,n do out[i]={x=f.x,y=f.y,w=f.w,h=f.h} end;return out
