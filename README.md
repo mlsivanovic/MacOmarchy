@@ -56,7 +56,8 @@ se obaveštenje i operacija staje.
 
 ## Automatski raspored
 
-- Jedan običan prozor popunjava radnu površinu uz marginu 8 px.
+- Jedan običan prozor popunjava radnu površinu uz marginu 4 px.
+- Razmak između prozora je 4 px.
 - Dva prozora dele ekran 50/50; dodatni prozori se slažu u sekundarni panel.
 - Svaki monitor i svaki native desktop imaju zaseban raspored.
 - Posle prelaska na drugi monitor prozor se pridružuje njegovom aktivnom
