@@ -2,7 +2,7 @@
 
 An Omarchy-inspired macOS setup built around native Spaces and Mission Control.
 Hammerspoon handles tiling, a searchable command menu, keyboard shortcuts and mouse
-gestures. Ghostty is the terminal. Amethyst is disabled and removed from login startup.
+gestures. Ghostty is the terminal.
 
 ## Keyboard shortcuts
 
