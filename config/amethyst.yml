@@ -1,0 +1,169 @@
+{
+  "cycle-layout": {
+    "mod": "mod1",
+    "key": "l"
+  },
+  "cycle-layout-backward": {
+    "mod": "mod2",
+    "key": "l"
+  },
+  "select-tall-layout": {
+    "mod": "mod1",
+    "key": "a"
+  },
+  "select-wide-layout": {
+    "mod": "mod1",
+    "key": "w"
+  },
+  "select-fullscreen-layout": {
+    "mod": "mod1",
+    "key": "f"
+  },
+  "select-column-layout": false,
+  "focus-screen-ccw": false,
+  "focus-screen-cw": false,
+  "focus-screen-1": false,
+  "focus-screen-2": false,
+  "focus-screen-3": false,
+  "focus-screen-4": false,
+  "focus-screen-5": false,
+  "throw-screen-1": false,
+  "throw-screen-2": false,
+  "throw-screen-3": false,
+  "throw-screen-4": false,
+  "throw-screen-5": false,
+  "shrink-main": {
+    "mod": "mod1",
+    "key": "-"
+  },
+  "expand-main": {
+    "mod": "mod1",
+    "key": "="
+  },
+  "increase-main": false,
+  "decrease-main": false,
+  "focus-ccw": false,
+  "focus-cw": false,
+  "focus-main": false,
+  "swap-screen-ccw": {
+    "mod": "mod2",
+    "key": "up"
+  },
+  "swap-screen-cw": {
+    "mod": "mod2",
+    "key": "down"
+  },
+  "swap-ccw": {
+    "mod": "mod2",
+    "key": "left"
+  },
+  "swap-cw": {
+    "mod": "mod2",
+    "key": "right"
+  },
+  "swap-main": {
+    "mod": "mod1",
+    "key": "m"
+  },
+  "throw-space-1": {
+    "mod": "mod2",
+    "key": "1"
+  },
+  "throw-space-2": {
+    "mod": "mod2",
+    "key": "2"
+  },
+  "throw-space-3": {
+    "mod": "mod2",
+    "key": "3"
+  },
+  "throw-space-4": {
+    "mod": "mod2",
+    "key": "4"
+  },
+  "throw-space-5": {
+    "mod": "mod2",
+    "key": "5"
+  },
+  "throw-space-6": {
+    "mod": "mod2",
+    "key": "6"
+  },
+  "throw-space-7": {
+    "mod": "mod2",
+    "key": "7"
+  },
+  "throw-space-8": {
+    "mod": "mod2",
+    "key": "8"
+  },
+  "throw-space-9": {
+    "mod": "mod2",
+    "key": "9"
+  },
+  "throw-space-10": false,
+  "throw-space-left": false,
+  "throw-space-right": false,
+  "toggle-float": {
+    "mod": "mod1",
+    "key": "t"
+  },
+  "toggle-tiling": {
+    "mod": "mod2",
+    "key": "t"
+  },
+  "display-current-layout": {
+    "mod": "mod1",
+    "key": "i"
+  },
+  "reevaluate-windows": {
+    "mod": "mod1",
+    "key": "r"
+  },
+  "toggle-focus-follows-mouse": false,
+  "relaunch-amethyst": false,
+  "layouts": [
+    "bsp",
+    "tall",
+    "wide",
+    "fullscreen",
+    "floating"
+  ],
+  "mod1": [
+    "control",
+    "option"
+  ],
+  "mod2": [
+    "control",
+    "option",
+    "shift"
+  ],
+  "window-margins": true,
+  "window-margin-size": 4,
+  "screen-padding-left": 4,
+  "screen-padding-right": 4,
+  "screen-padding-top": 4,
+  "screen-padding-bottom": 4,
+  "float-small-windows": true,
+  "small-window-size": 500,
+  "floating": [
+    "com.apple.systempreferences",
+    "org.hammerspoon.Hammerspoon",
+    "org.keepassxc.keepassxc"
+  ],
+  "floating-is-blacklist": true,
+  "mouse-follows-focus": false,
+  "focus-follows-mouse": false,
+  "enables-layout-hud": true,
+  "enables-layout-hud-on-space-change": false,
+  "window-resize-step": 5,
+  "restore-layouts-on-launch": true,
+  "select-bsp-layout": {
+    "mod": "mod1",
+    "key": "b"
+  },
+  "select-floating-layout": {
+    "mod": "mod2",
+    "key": "f"
+  }
+}
