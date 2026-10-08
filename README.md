@@ -27,7 +27,7 @@ tabove i zoom ostaju native. Cmd ostaje za launchere i gestove mišem.
 | Ctrl + Option + Shift + ↑ / ↓ | Premesti na prethodni / sledeći monitor |
 | Ctrl + Option + M | Zameni sa glavnim prozorom |
 | Ctrl + Option + − / = | Smanji / povećaj glavni panel |
-| Ctrl + Option + 1–9 | Desktop na monitoru fokusiranog prozora |
+| Cmd + 1–9 | Desktop na monitoru fokusiranog prozora |
 | Cmd + Shift + 1–9 | Pošalji prozor na desktop istog monitora i pređi tamo |
 | Cmd + scroll | Kruženje kroz desktopove monitora ispod miša |
 | Cmd + middle click | Mission Control |
@@ -38,7 +38,7 @@ tabove i zoom ostaju native. Cmd ostaje za launchere i gestove mišem.
 | Cmd + W | Native zatvaranje prozora / taba |
 | Screenshot u centralnom meniju | Native screenshot / snimanje |
 
-Ctrl+Option+broj menja desktop, dok Cmd+Shift+broj premešta aktivni prozor i
+Cmd+broj menja desktop, dok Cmd+Shift+broj premešta aktivni prozor i
 prati ga na odredišni desktop istog monitora. Ako odredišni broj ne postoji,
 kreiraju se svi desktopovi koji nedostaju do tog broja (npr. sa dva na pet:
 kreiraju se 3, 4 i 5). Kreiranje koristi native Mission Control, koji se kratko
@@ -46,10 +46,11 @@ prikaže. Proveravaju se kreiranje, pripadnost prozora desktopu i promena prikaz
 
 Cmd+Shift+3/4/5 sada služe za premeštanje prozora. Native screenshot/snimač
 ostaje dostupan kroz centralni meni ili macOS Screenshot aplikaciju.
-Cmd+Space je Spotlight; Cmd+W ostaje native. Cmd+broj ostaje za native tabove.
+Cmd+Space je Spotlight; Cmd+W ostaje native. Cmd+broj je izuzetak:
+menja desktop i preuzima prečice za izbor tabova u aplikacijama.
 
 Brojevi desktopova su lokalni za monitor i preskaču fullscreen Spaces.
-Ctrl+Option+broj sam ne kreira desktopove. Premešta se aktivni prozor
+Cmd+broj sam ne kreira desktopove. Premešta se aktivni prozor
 aplikacije, ne svi njeni prozori. Ako kreiranje ili slanje ne uspe, prikazuje
 se obaveštenje i operacija staje.
 

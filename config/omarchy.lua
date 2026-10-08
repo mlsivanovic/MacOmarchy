@@ -92,8 +92,8 @@ for _, c in ipairs(commands) do
     add(c[1], "Ctrl + Option + " .. (c[3] == shift and "Shift + " or "") .. c[2], keys(c[3], c[2]),c[3],c[2])
 end
 for i = 1, 9 do
-    add("Desktop — " .. i .. " na trenutnom monitoru", "Ctrl + Option + " .. i,
-        function() M.desktops.goToNumber(i) end, mod, tostring(i))
+    add("Desktop — " .. i .. " na trenutnom monitoru", "Cmd + " .. i,
+        function() M.desktops.goToNumber(i) end, launchMod, tostring(i))
     add("Prozor — prebaci na Desktop " .. i .. " ovog monitora", "Cmd + Shift + " .. i .. " · kreiraj ako nedostaje, pa prati prozor",
         function() M.desktops.moveWindow(i) end, launchShift, tostring(i))
 end
