@@ -6,41 +6,41 @@ Amethyst je zaustavljen i uklonjen iz automatskog pokretanja.
 
 ## Prečice
 
-Modifier je **Command (Cmd)**.
+Za prečice koje se kose sa standardnim macOS ili aplikacijskim komandama
+koristi se **Control + Option**. Cmd+Space, Cmd+W, standardne komande za tekst,
+tabove, zoom i screenshot ostaju native. Cmd ostaje za launchere i gestove mišem.
 
 | Prečica | Akcija |
 |---|---|
 | Cmd + Return | Ghostty |
 | Cmd + Shift + Return | Google Chrome |
-| Cmd + Space / K | Pretraživi centralni meni |
-| Cmd + strelice | Fokus susednog prozora na trenutnom monitoru |
-| Cmd + L / Shift + L | Sledeći / prethodni layout |
-| Cmd + A / W | Tall / Wide |
-| Cmd + F | Prozor preko cele radne površine |
-| Cmd + Shift + F | Floating layout za ručno raspoređivanje |
-| Cmd + T | Floating toggle aktivnog prozora |
-| Cmd + Shift + T | Globalni tiling uključi / isključi |
-| Cmd + I / R | Prikaži layout / ponovo rasporedi |
-| Cmd + Shift + ← / → | Zameni sa prethodnim / sledećim prozorom u rasporedu |
-| Cmd + Shift + ↑ / ↓ | Premesti na prethodni / sledeći monitor |
-| Cmd + M | Zameni sa glavnim prozorom u Tall/Wide layoutu |
-| Cmd + − / = | Smanji / povećaj glavni panel |
-| Cmd + 1–9 | Pređi na taj desktop **na monitoru fokusiranog prozora** |
-| Cmd + Shift + 1–9 | Pošalji aktivni prozor na taj desktop istog monitora |
-| Cmd + scroll | Kruženje kroz postojeće desktopove **monitora ispod miša** |
+| Ctrl + Option + Space / K | Pretraživi centralni meni |
+| Ctrl + Option + strelice | Fokus susednog prozora na trenutnom monitoru |
+| Ctrl + Option + L / Shift + L | Sledeći / prethodni layout |
+| Ctrl + Option + A / W | Tall / Wide |
+| Ctrl + Option + F | Prozor preko cele radne površine |
+| Ctrl + Option + Shift + F | Floating layout za ručno raspoređivanje |
+| Ctrl + Option + T | Floating toggle aktivnog prozora |
+| Ctrl + Option + Shift + T | Globalni tiling uključi / isključi |
+| Ctrl + Option + I / R | Prikaži layout / ponovo rasporedi |
+| Ctrl + Option + Shift + ← / → | Zameni sa prethodnim / sledećim prozorom |
+| Ctrl + Option + Shift + ↑ / ↓ | Premesti na prethodni / sledeći monitor |
+| Ctrl + Option + M | Zameni sa glavnim prozorom |
+| Ctrl + Option + − / = | Smanji / povećaj glavni panel |
+| Ctrl + Option + 1–9 | Desktop na monitoru fokusiranog prozora |
+| Ctrl + Option + Shift + 1–9 | Pošalji prozor na desktop istog monitora |
+| Cmd + scroll | Kruženje kroz desktopove monitora ispod miša |
 | Cmd + middle click | Mission Control |
 | Cmd + Ctrl + scroll | Rotiranje prozora na monitoru |
 | Cmd + Ctrl + V | Clipboard istorija |
 | F12 | Ghostty quick terminal |
-| Spotlight | Dostupan kroz macOS meni / Launchpad |
-| Screenshot u centralnom meniju | Native screenshot / snimanje |
+| Cmd + Space | Native Spotlight |
+| Cmd + W | Native zatvaranje prozora / taba |
+| Cmd + Shift + 3 / 4 / 5 | Native screenshot / snimanje |
 
-Cmd kombinacije za tiling preuzimaju istoimene prečice aplikacija (npr. Cmd+W,
-Cmd+F, Cmd+T). Cmd+Space otvara centralni meni, a Cmd+Shift+1–9 služi za
-slanje prozora i preuzima i kombinacije native screenshot prečica. Screenshot
-je i dalje dostupan u centralnom meniju i kroz macOS Screenshot aplikaciju.
-Native Move left/right a space koriste Ctrl+strelice, odvojeno od Cmd+strelica
-za fokus prozora. Mission Control pregled koristi Ctrl+↑.
+Brojevi su prebačeni na Ctrl+Option da Cmd+broj ostane za native tabove,
+a Cmd+Shift+3/4/5 za screenshot. Native Mission Control i Space prečice
+vraćene su na podešavanja pre Cmd migracije.
 
 Brojevi desktopova su lokalni za monitor i preskaču fullscreen Spaces.
 Na monitoru sa dva desktopa rade 1 i 2. Nepostojeći broj prikazuje obaveštenje;

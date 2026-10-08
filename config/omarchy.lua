@@ -1,6 +1,8 @@
 -- Native macOS Spaces + Hammerspoon tiling. Mouse/clipboard bindings stay in init.lua.
 local M = { hotkeys = {}, tasks = {}, actions = {}, enabled = true }
-local mod, shift = {"cmd"}, {"cmd", "shift"}
+-- Reserve standard Cmd editing/navigation chords for macOS and applications.
+local mod, shift = {"ctrl", "alt"}, {"ctrl", "alt", "shift"}
+local launchMod, launchShift = {"cmd"}, {"cmd", "shift"}
 local root = hs.configdir .. "/omarchy-assets"
 local previousWindow
 M.desktops = require("desktops")
@@ -47,7 +49,7 @@ function M.setTheme(dark)
 end
 
 for _, dir in ipairs({"left", "right", "up", "down"}) do
-    add("Fokus: " .. dir, "Cmd + " .. dir, function()
+    add("Fokus: " .. dir, "Ctrl + Option + " .. dir, function()
         local w = hs.window.focusedWindow()
         if w then
             local method = {left="focusWindowWest",right="focusWindowEast",up="focusWindowNorth",down="focusWindowSouth"}
@@ -56,8 +58,8 @@ for _, dir in ipairs({"left", "right", "up", "down"}) do
     end, mod, dir)
 end
 
-add("Ghostty — terminal", "Cmd + Return · F12: quick terminal", app("Ghostty"), mod, "return")
-add("Browser — Google Chrome", "Cmd + Shift + Return", app("Google Chrome"), shift, "return")
+add("Ghostty — terminal", "Cmd + Return · F12: quick terminal", app("Ghostty"), launchMod, "return")
+add("Browser — Google Chrome", "Cmd + Shift + Return", app("Google Chrome"), launchShift, "return")
 add("Zed — editor", "Postojeći editor", app("Zed"))
 add("VS Code — editor", "Postojeći editor", app("Visual Studio Code"))
 add("Reminders — podsetnici", "Native macOS", app("Reminders"))
@@ -87,12 +89,12 @@ local commands = {
     {"Tall/Wide — povećaj glavni panel", "=", mod},
 }
 for _, c in ipairs(commands) do
-    add(c[1], "Cmd + " .. (c[3] == shift and "Shift + " or "") .. c[2], keys(c[3], c[2]),c[3],c[2])
+    add(c[1], "Ctrl + Option + " .. (c[3] == shift and "Shift + " or "") .. c[2], keys(c[3], c[2]),c[3],c[2])
 end
 for i = 1, 9 do
-    add("Desktop — " .. i .. " na trenutnom monitoru", "Cmd + " .. i,
+    add("Desktop — " .. i .. " na trenutnom monitoru", "Ctrl + Option + " .. i,
         function() M.desktops.goToNumber(i) end, mod, tostring(i))
-    add("Prozor — prebaci na Desktop " .. i .. " ovog monitora", "Cmd + Shift + " .. i,
+    add("Prozor — prebaci na Desktop " .. i .. " ovog monitora", "Ctrl + Option + Shift + " .. i,
         function() M.desktops.moveWindow(i) end, shift, tostring(i))
 end
 
@@ -156,10 +158,10 @@ M.bar = hs.menubar.new()
 M.bar:setTooltip("macOS Omarchy — komande i native Space")
 M.bar:setMenu(function()
     return {
-        {title="Komande — Cmd + Space", fn=function() M.show() end},
-        {title="Trenutni layout — Cmd + I", fn=keys(mod,"i")},
-        {title="Sledeći layout — Cmd + L", fn=keys(mod,"l")},
-        {title="Floating prozor — Cmd + T", fn=keys(mod,"t")},
+        {title="Komande — Ctrl + Option + Space", fn=function() M.show() end},
+        {title="Trenutni layout — Ctrl + Option + I", fn=keys(mod,"i")},
+        {title="Sledeći layout — Ctrl + Option + L", fn=keys(mod,"l")},
+        {title="Floating prozor — Ctrl + Option + T", fn=keys(mod,"t")},
         {title="Tiling uključi / isključi", fn=keys(shift,"t")},
         {title="-"},
         {title="Catppuccin Mocha", fn=function() M.setTheme(true) end},
