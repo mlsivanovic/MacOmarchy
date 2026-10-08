@@ -8,7 +8,7 @@ Amethyst je zaustavljen i uklonjen iz automatskog pokretanja.
 
 Za prečice koje se kose sa standardnim macOS ili aplikacijskim komandama
 koristi se **Control + Option**. Cmd+Space, Cmd+W, standardne komande za tekst,
-tabove, zoom i screenshot ostaju native. Cmd ostaje za launchere i gestove mišem.
+tabove i zoom ostaju native. Cmd ostaje za launchere i gestove mišem.
 
 | Prečica | Akcija |
 |---|---|
@@ -28,7 +28,7 @@ tabove, zoom i screenshot ostaju native. Cmd ostaje za launchere i gestove miše
 | Ctrl + Option + M | Zameni sa glavnim prozorom |
 | Ctrl + Option + − / = | Smanji / povećaj glavni panel |
 | Ctrl + Option + 1–9 | Desktop na monitoru fokusiranog prozora |
-| Ctrl + Option + Shift + 1–9 | Pošalji prozor na desktop istog monitora |
+| Cmd + Shift + 1–9 | Pošalji prozor na desktop istog monitora i pređi tamo |
 | Cmd + scroll | Kruženje kroz desktopove monitora ispod miša |
 | Cmd + middle click | Mission Control |
 | Cmd + Ctrl + scroll | Rotiranje prozora na monitoru |
@@ -36,16 +36,22 @@ tabove, zoom i screenshot ostaju native. Cmd ostaje za launchere i gestove miše
 | F12 | Ghostty quick terminal |
 | Cmd + Space | Native Spotlight |
 | Cmd + W | Native zatvaranje prozora / taba |
-| Cmd + Shift + 3 / 4 / 5 | Native screenshot / snimanje |
+| Screenshot u centralnom meniju | Native screenshot / snimanje |
 
-Brojevi su prebačeni na Ctrl+Option da Cmd+broj ostane za native tabove,
-a Cmd+Shift+3/4/5 za screenshot. Native Mission Control i Space prečice
-vraćene su na podešavanja pre Cmd migracije.
+Ctrl+Option+broj menja desktop, dok Cmd+Shift+broj premešta aktivni prozor i
+prati ga na odredišni desktop istog monitora. Ako odredišni broj ne postoji,
+kreiraju se svi desktopovi koji nedostaju do tog broja (npr. sa dva na pet:
+kreiraju se 3, 4 i 5). Kreiranje koristi native Mission Control, koji se kratko
+prikaže. Proveravaju se kreiranje, pripadnost prozora desktopu i promena prikaza.
+
+Cmd+Shift+3/4/5 sada služe za premeštanje prozora. Native screenshot/snimač
+ostaje dostupan kroz centralni meni ili macOS Screenshot aplikaciju.
+Cmd+Space je Spotlight; Cmd+W ostaje native. Cmd+broj ostaje za native tabove.
 
 Brojevi desktopova su lokalni za monitor i preskaču fullscreen Spaces.
-Na monitoru sa dva desktopa rade 1 i 2. Nepostojeći broj prikazuje obaveštenje;
-dodatne desktopove napravi kroz Mission Control. Slanje prozora ne menja desktop.
-Premesti se aktivni prozor aplikacije, ne svi njeni prozori.
+Ctrl+Option+broj sam ne kreira desktopove. Premešta se aktivni prozor
+aplikacije, ne svi njeni prozori. Ako kreiranje ili slanje ne uspe, prikazuje
+se obaveštenje i operacija staje.
 
 ## Automatski raspored
 
@@ -85,7 +91,7 @@ Ghostty i Hammerspoon se pokreću pri prijavi preko lokalnih LaunchAgent fajlova
 | Izvor | Aktivna lokacija |
 |---|---|
 | config/hammerspoon/init.lua | ~/.hammerspoon/init.lua |
-| config/omarchy.lua, desktops.lua, tiler.lua | ~/.hammerspoon/ |
+| config/omarchy.lua, desktops.lua, tiler.lua, mission-control.lua | ~/.hammerspoon/ |
 | config/hammerspoon/space-move.m | Izvor lokalnog native modula |
 | bin/build-space-move | Kompajlira ~/.hammerspoon/bin/space-move.so |
 | config/ghostty.config | ~/.config/ghostty/config.ghostty |
@@ -96,7 +102,8 @@ Ghostty i Hammerspoon se pokreću pri prijavi preko lokalnih LaunchAgent fajlova
 
 `config/legacy/` čuva neaktivnu Amethyst konfiguraciju i stari Spaces helper.
 Native modul možeš ponovo kompajlirati sa `./bin/build-space-move`, a konfiguraciju
-učitati preko Hammerspoon Reload Config. Behavioral testovi: `lua tests/tiler.lua` i `lua tests/desktops.lua`.
+učitati preko Hammerspoon Reload Config. Behavioral testovi: `lua tests/tiler.lua`, `lua tests/desktops.lua` i
+`lua tests/mission-control.lua`.
 
 ## Rezervna kopija i povratak
 
@@ -114,6 +121,7 @@ Postojeće aplikacije nisu brisane. Neaktivni Amethyst LaunchAgent sačuvan je u
 ## Izvori
 
 - [Hammerspoon](https://www.hammerspoon.org/docs/) — window, screen, Space i event API.
+- [Hammerspoon issue 3897](https://github.com/Hammerspoon/hammerspoon/issues/3897) — Mission Control AX struktura na macOS 27; lokalni adapter čita WindowManager.
 - [Hammerspoon issue 3636](https://github.com/Hammerspoon/hammerspoon/issues/3636) — legacy moveWindowToSpace prijavljuje uspeh bez pomeranja.
 - [yabai Space manager](https://github.com/asmvik/yabai/blob/master/src/space_manager.c) — noviji bridged Space API, referenca za lokalni adapter.
 - [Catppuccin za Zed](https://github.com/catppuccin/zed) — tema, MIT licenca.

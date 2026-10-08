@@ -94,8 +94,8 @@ end
 for i = 1, 9 do
     add("Desktop — " .. i .. " na trenutnom monitoru", "Ctrl + Option + " .. i,
         function() M.desktops.goToNumber(i) end, mod, tostring(i))
-    add("Prozor — prebaci na Desktop " .. i .. " ovog monitora", "Ctrl + Option + Shift + " .. i,
-        function() M.desktops.moveWindow(i) end, shift, tostring(i))
+    add("Prozor — prebaci na Desktop " .. i .. " ovog monitora", "Cmd + Shift + " .. i .. " · kreiraj ako nedostaje, pa prati prozor",
+        function() M.desktops.moveWindow(i) end, launchShift, tostring(i))
 end
 
 -- React to cross-monitor moves after the drag settles.

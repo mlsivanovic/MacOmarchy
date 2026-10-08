@@ -1,6 +1,7 @@
 -- Use real Dock transitions, not just WindowServer's current-Space metadata.
 -- Native shortcuts may be customized: read their actual keycodes and full flags.
 local D = { busy = false, moves = {} }
+local missionControl=require("mission-control")
 local mouseOrigin, placedMouse
 local loader = package.loadlib(os.getenv("HOME") .. "/.hammerspoon/bin/space-move.so", "luaopen_space_move")
 local bridgedMove = loader and loader()
@@ -69,6 +70,7 @@ end
 
 local function finish(errorMessage)
     D.busy = false
+    local completion=D.completion;D.completion=nil
     if D.timer then D.timer:stop(); D.timer=nil end
     if mouseOrigin and placedMouse then
         local current = hs.mouse.absolutePosition()
@@ -79,16 +81,21 @@ local function finish(errorMessage)
     mouseOrigin, placedMouse = nil, nil
     if errorMessage then hs.alert.show(errorMessage) end
     if D.afterChange then D.afterChange() end
+    if completion then completion(not errorMessage) end
 end
 
-function D.goToID(screen, target)
+function D.goToID(screen, target, completion)
     if D.busy or not screen then return false end
-    if hs.spaces.activeSpaceOnScreen(screen) == target then return true end
+    if hs.spaces.activeSpaceOnScreen(screen) == target then
+        if completion then completion(true) end
+        return true
+    end
     local all = hs.spaces.spacesForScreen(screen) or {}
     local targetIndex
     for i,id in ipairs(all) do if id == target then targetIndex=i end end
     if not targetIndex then return false end
     D.busy = true
+    D.completion=completion
     local attempts, pendingSpace, deadline = 0, nil, 0
     local function step()
         local current = hs.spaces.activeSpaceOnScreen(screen)
@@ -132,24 +139,77 @@ function D.cycle(direction, screen)
     screen = screen or hs.mouse.getCurrentScreen()
     local list = D.userSpaces(screen)
     if #list < 2 then return false end
-    if D.busy then return true end
+    if D.busy or D.transfer then return true end
     local index = 1
     local current = hs.spaces.activeSpaceOnScreen(screen)
     for i,id in ipairs(list) do if id==current then index=i; break end end
     return D.goToID(screen, list[((index-1+direction)%#list)+1])
 end
 
+-- Create missing local user desktops in order, verify each addition before
+-- requesting another, and close Mission Control once for the whole batch.
+function D.ensureNumber(number, screen, callback)
+    if type(number)~="number" or number%1~=0 or number<1 or number>9 then
+        callback(nil,"Broj desktopa mora biti 1–9.");return false
+    end
+    local target=D.userSpaces(screen)[number]
+    if target then callback(target);return true end
+    local pendingCount,deadline,opened=nil,0,true
+    local readyDeadline=hs.timer.secondsSinceEpoch()+3
+    missionControl.open()
+    local function complete(id,errorMessage)
+        if D.creationTimer then D.creationTimer:stop();D.creationTimer=nil end
+        if opened then
+            missionControl.close()
+            D.creationFinish=hs.timer.doAfter(0.2,function() callback(id,errorMessage) end)
+        else callback(id,errorMessage) end
+    end
+    local function step()
+        local list=D.userSpaces(screen)
+        if list[number] then complete(list[number]);return end
+        if pendingCount then
+            if #list>pendingCount then pendingCount=nil
+            elseif hs.timer.secondsSinceEpoch()<deadline then return
+            else complete(nil,"macOS nije kreirao novi desktop na ovom monitoru.");return end
+        end
+        local called,ok,err=pcall(missionControl.add,screen)
+        if called and not ok and err=="pending" then
+            if hs.timer.secondsSinceEpoch()>=readyDeadline then complete(nil,"Mission Control nije prikazao izabrani monitor.") end
+            return
+        end
+        if not called or not ok then complete(nil,tostring(err or ok or "Desktop nije kreiran."));return end
+        pendingCount=#list
+        deadline=hs.timer.secondsSinceEpoch()+3
+        readyDeadline=deadline
+    end
+    D.creationTimer=hs.timer.doEvery(0.1,step)
+    step()
+    return true
+end
+
 function D.moveWindow(number)
+    if D.busy or D.transfer then hs.alert.show("Sačekaj završetak prebacivanja desktopa.");return false end
     local window = hs.window.focusedWindow()
     if not window or not window:isStandard() or window:isFullScreen() then
         hs.alert.show("Izaberi običan prozor za premeštanje."); return false
     end
     local screen = window:screen()
-    local target = D.userSpaces(screen)[number]
-    if not target then hs.alert.show("Na ovom monitoru ne postoji Desktop " .. number); return false end
-    if hs.spaces.activeSpaceOnScreen(screen)==target then return true end
-    return D.moveToSpace(window,target,function(done)
-        if done and D.afterChange then D.afterChange() end
+    D.transfer=true
+    local function done(ok)
+        D.transfer=false
+        if ok then window:focus() end
+        if D.afterChange then D.afterChange() end
+    end
+    return D.ensureNumber(number,screen,function(target,errorMessage)
+        if not target then
+            D.transfer=false;hs.alert.show(errorMessage);return
+        end
+        if hs.spaces.activeSpaceOnScreen(screen)==target then done(true);return end
+        local started=D.moveToSpace(window,target,function(moved)
+            if not moved then done(false);return end
+            if not D.goToID(screen,target,done) then done(false) end
+        end)
+        if not started then D.transfer=false end
     end)
 end
 
