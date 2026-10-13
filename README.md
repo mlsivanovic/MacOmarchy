@@ -14,6 +14,7 @@ and the default screenshot shortcuts.
 | Shortcut | Action |
 |---|---|
 | Cmd + Return | Ghostty |
+| Cmd + E | Finder |
 | Cmd + Shift + Return | Google Chrome |
 | Ctrl + Option + Space / K | Searchable command menu |
 | Ctrl + Option + arrows | Focus a neighboring window on the current display |

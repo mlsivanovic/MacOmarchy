@@ -59,6 +59,7 @@ for _, dir in ipairs({"left", "right", "up", "down"}) do
 end
 
 add("Ghostty — terminal", "Cmd + Return · F12: quick terminal", app("Ghostty"), launchMod, "return")
+add("Finder — files", "Cmd + E", app("Finder"), launchMod, "e")
 add("Browser — Google Chrome", "Cmd + Shift + Return", app("Google Chrome"), launchShift, "return")
 add("Zed — editor", "Existing editor", app("Zed"))
 add("VS Code — editor", "Existing editor", app("Visual Studio Code"))
