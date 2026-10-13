@@ -95,7 +95,7 @@ hs_window_cycler.flagsWatcher = hs.eventtap.new({hs.eventtap.event.types.flagsCh
 end)
 hs_window_cycler.flagsWatcher:start()
 
-local function getTargetScreenForWindows()
+local function getTargetScreenForWindows(windows)
     local mouseScreen = hs.mouse.getCurrentScreen()
     local focusedWin = hs.window.focusedWindow()
     local focusedScreen = focusedWin and focusedWin:screen()
@@ -104,7 +104,7 @@ local function getTargetScreenForWindows()
         if not scr then return 0 end
         local cnt = 0
         local scrId = scr:id()
-        for _, w in ipairs(hs.window.orderedWindows()) do
+        for _, w in ipairs(windows) do
             local ok, s = pcall(function() return w:screen() end)
             local okStd, isStd = pcall(function() return w:isStandard() end)
             local okMin, isMin = pcall(function() return w:isMinimized() end)
@@ -169,12 +169,14 @@ hs_window_cycler.scrollWatcher = hs.eventtap.new({hs.eventtap.event.types.scroll
             return true
         end
 
-        local screen = getTargetScreenForWindows()
+        -- One inventory per gesture; reuse it to choose the display and cycle.
+        local rawWindows = omarchy and omarchy.windowFilter:getWindows(hs.window.filter.sortByFocusedLast)
+            or hs.window.orderedWindows()
+        local screen = getTargetScreenForWindows(rawWindows)
         if not screen then return true end
         local screenId = screen:id()
 
         if not cycleSession.active or (now - cycleSession.lastTime > 1.5) or (cycleSession.screenId ~= screenId) then
-            local rawWindows = hs.window.orderedWindows()
             local screenWindows = {}
             for _, w in ipairs(rawWindows) do
                 local ok, s = pcall(function() return w:screen() end)

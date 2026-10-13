@@ -3,6 +3,14 @@
 local D = { busy = false, moves = {} }
 local missionControl=require("mission-control")
 local mouseOrigin, placedMouse
+local drainNavigation
+function D.settle()
+    D.settleUntil=hs.timer.secondsSinceEpoch()+0.15
+end
+function D.isChanging()
+    return D.busy or D.transfer or next(D.moves)~=nil
+        or hs.timer.secondsSinceEpoch()<(D.settleUntil or 0)
+end
 local loader = package.loadlib(os.getenv("HOME") .. "/.hammerspoon/bin/space-move.so", "luaopen_space_move")
 local bridgedMove = loader and loader()
 function D.moveToSpace(window, target, callback)
@@ -40,8 +48,7 @@ function D.keyboardScreen()
     return (window and window:screen()) or hs.mouse.getCurrentScreen() or hs.screen.mainScreen()
 end
 
-local function nativeShortcut(direction)
-    local preferences = hs.plist.read(os.getenv("HOME") .. "/Library/Preferences/com.apple.symbolichotkeys.plist")
+local function nativeShortcut(direction, preferences)
     local id = direction == "left" and "79" or "81"
     local entry = preferences and preferences.AppleSymbolicHotKeys and preferences.AppleSymbolicHotKeys[id]
     local params = entry and entry.value and entry.value.parameters
@@ -55,23 +62,27 @@ local function focusScreen(screen)
     placedMouse = {x=frame.x+frame.w/2,y=frame.y+frame.h/2}
     hs.mouse.absolutePosition(placedMouse)
     local focused = hs.window.focusedWindow()
-    if sameScreen(focused and focused:screen(), screen) then return end
+    if sameScreen(focused and focused:screen(), screen) then return false end
     for _, window in ipairs(hs.window.orderedWindows()) do
         if window:isStandard() and window:isVisible() and sameScreen(window:screen(), screen) then
             window:focus()
-            return
+            return true
         end
     end
     -- No visible window exists here. Click the empty desktop to give this
     -- monitor keyboard focus; the 2px edge lies outside the 4px tiled margin.
     placedMouse = {x=frame.x+2, y=frame.y+frame.h/2}
     hs.eventtap.leftClick(placedMouse)
+    return true
 end
 
 local function finish(errorMessage)
     D.busy = false
+    D.destination=nil
+    D.settle()
     local completion=D.completion;D.completion=nil
     if D.timer then D.timer:stop(); D.timer=nil end
+    if D.keyTimer then D.keyTimer:stop();D.keyTimer=nil end
     if mouseOrigin and placedMouse then
         local current = hs.mouse.absolutePosition()
         if math.abs(current.x-placedMouse.x)<4 and math.abs(current.y-placedMouse.y)<4 then
@@ -81,11 +92,24 @@ local function finish(errorMessage)
     mouseOrigin, placedMouse = nil, nil
     if errorMessage then hs.alert.show(errorMessage) end
     if D.afterChange then D.afterChange() end
+    if errorMessage then D.queued=nil end
     if completion then completion(not errorMessage) end
+    drainNavigation()
 end
 
-function D.goToID(screen, target, completion)
-    if D.busy or not screen then return false end
+drainNavigation=function()
+    if D.busy or D.transfer or not D.queued then return end
+    local request=D.queued;D.queued=nil
+    D.goToID(request.screen,request.target,request.completion)
+end
+
+function D.goToID(screen, target, completion, transferOwner)
+    if not screen then return false end
+    if D.busy or (D.transfer and not transferOwner) then
+        -- Preserve the latest intent instead of silently swallowing input.
+        D.queued={screen=screen,target=target,completion=completion}
+        return true
+    end
     if hs.spaces.activeSpaceOnScreen(screen) == target then
         if completion then completion(true) end
         return true
@@ -95,7 +119,9 @@ function D.goToID(screen, target, completion)
     for i,id in ipairs(all) do if id == target then targetIndex=i end end
     if not targetIndex then return false end
     D.busy = true
+    D.destination={screen=screen,target=target}
     D.completion=completion
+    local preferences=hs.plist.read(os.getenv("HOME") .. "/Library/Preferences/com.apple.symbolichotkeys.plist")
     local attempts, pendingSpace, deadline = 0, nil, 0
     local function step()
         local current = hs.spaces.activeSpaceOnScreen(screen)
@@ -109,15 +135,16 @@ function D.goToID(screen, target, completion)
         for i,id in ipairs(all) do if id == current then currentIndex=i end end
         if not currentIndex or attempts >= #all+1 then finish("The desktop is no longer available."); return end
         local delta = currentIndex < targetIndex and 1 or -1
-        local shortcut = nativeShortcut(delta == 1 and "right" or "left")
+        local shortcut = nativeShortcut(delta == 1 and "right" or "left",preferences)
         if not shortcut then finish("Enable Move left/right a space in macOS Keyboard → Mission Control."); return end
-        focusScreen(screen)
+        local changedFocus=focusScreen(screen)
         pendingSpace = all[currentIndex+delta]
         deadline = hs.timer.secondsSinceEpoch()+2
         attempts = attempts+1
         -- Fn/numeric-pad flags are part of the saved native arrow shortcut.
         -- keyStroke only sends the named modifiers and can fail to match it.
-        D.keyTimer=hs.timer.doAfter(0.15,function()
+        D.keyTimer=hs.timer.doAfter(changedFocus and 0.15 or 0,function()
+            D.keyTimer=nil
             if not D.busy then return end
             hs.eventtap.event.newKeyEvent({},shortcut.keycode,true):rawFlags(shortcut.flags):post()
             hs.eventtap.event.newKeyEvent({},shortcut.keycode,false):rawFlags(shortcut.flags):post()
@@ -139,9 +166,10 @@ function D.cycle(direction, screen)
     screen = screen or hs.mouse.getCurrentScreen()
     local list = D.userSpaces(screen)
     if #list < 2 then return false end
-    if D.busy or D.transfer then return true end
     local index = 1
-    local current = hs.spaces.activeSpaceOnScreen(screen)
+    local intended=D.queued or D.destination
+    local current = intended and sameScreen(intended.screen,screen) and intended.target
+        or hs.spaces.activeSpaceOnScreen(screen)
     for i,id in ipairs(list) do if id==current then index=i; break end end
     return D.goToID(screen, list[((index-1+direction)%#list)+1])
 end
@@ -197,17 +225,19 @@ function D.moveWindow(number)
     D.transfer=true
     local function done(ok)
         D.transfer=false
+        D.settle()
         if ok then window:focus() end
         if D.afterChange then D.afterChange() end
+        drainNavigation()
     end
     return D.ensureNumber(number,screen,function(target,errorMessage)
         if not target then
-            D.transfer=false;hs.alert.show(errorMessage);return
+            hs.alert.show(errorMessage);done(false);return
         end
         if hs.spaces.activeSpaceOnScreen(screen)==target then done(true);return end
         local started=D.moveToSpace(window,target,function(moved)
             if not moved then done(false);return end
-            if not D.goToID(screen,target,done) then done(false) end
+            if not D.goToID(screen,target,done,true) then done(false) end
         end)
         if not started then D.transfer=false end
     end)

@@ -11,7 +11,7 @@ M.tiler = require("tiler")
 function M.reflow()
     M.tiler.reflow()
 end
-M.desktops.afterChange = M.reflow
+M.desktops.afterChange = function() M.tiler.schedule(0.15) end
 
 local function task(bin, args)
     local t
@@ -98,34 +98,24 @@ for i = 1, 9 do
         function() M.desktops.moveWindow(i) end, launchShift, tostring(i))
 end
 
--- React to cross-monitor moves after the drag settles.
--- Only react to actual monitor changes, not every frame produced by tiling.
-M.windowScreens = {}
-local function rememberScreen(window)
-    local screen = window:screen()
-    if screen then M.windowScreens[window:id()] = screen:id() end
-end
-for _, window in ipairs(hs.window.allWindows()) do rememberScreen(window) end
-local function delayedReflow()
-    if M.dragTimer then M.dragTimer:stop() end
-    M.dragTimer = hs.timer.doAfter(0.25, function()
-        if hs.eventtap.checkMouseButtons().left then delayedReflow(); return end
-        M.reflow()
-    end)
-end
-M.windowFilter = hs.window.filter.new()
-M.windowFilter:subscribe(hs.window.filter.windowCreated, rememberScreen)
-M.windowFilter:subscribe(hs.window.filter.windowDestroyed, function(window)
-    M.windowScreens[window:id()] = nil
+-- Keep a cached window inventory and react to lifecycle/geometry changes.
+M.windowFilter = hs.window.filter.new():setCurrentSpace(true)
+M.tiler.cachedWindowSource=function() return M.windowFilter:getWindows() end
+M.tiler.windowSource=M.tiler.cachedWindowSource
+M.windowFilter:subscribe({hs.window.filter.windowCreated,
+    hs.window.filter.windowVisible,hs.window.filter.windowNotVisible,
+    hs.window.filter.windowMinimized,hs.window.filter.windowUnminimized},function()
+    M.tiler.schedule()
 end)
-M.windowFilter:subscribe(hs.window.filter.windowMoved, function(window)
-    local screen = window:screen()
-    if not screen then return end
-    local id, oldScreen = window:id(), M.windowScreens[window:id()]
-    M.windowScreens[id] = screen:id()
-    if oldScreen and oldScreen ~= screen:id() then delayedReflow() end
+M.windowFilter:subscribe(hs.window.filter.windowDestroyed,function(window)
+    M.tiler.forget(window:id())
 end)
-M.spaceWatcher = hs.spaces.watcher.new(delayedReflow):start()
+M.windowFilter:subscribe(hs.window.filter.windowMoved,M.tiler.windowMoved)
+M.spaceWatcher = hs.spaces.watcher.new(function()
+    M.desktops.settle()
+    M.tiler.schedule(0.15)
+end):start()
+M.screenWatcher = hs.screen.watcher.new(function() M.tiler.schedule() end):start()
 
 -- Native Shortcuts run after automatic tiling is put into Floating layout.
 for n = 2, 4 do

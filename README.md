@@ -46,7 +46,8 @@ creates desktops 3, 4 and 5. Creation briefly opens native Mission Control.
 Desktop creation, window membership and the final active desktop are verified.
 
 Desktop numbers are local to each display and skip fullscreen Spaces. Navigation
-alone does not create desktops. Moving affects the active window rather than all
+alone does not create desktops. Rapid navigation keeps the latest requested destination;
+scroll steps accumulate from the intended destination while a transition is running. Moving affects the active window rather than all
 windows of its application. A failed creation or move stops the operation and
 shows a notification.
 
@@ -61,7 +62,12 @@ available through the command menu or the macOS Screenshot app.
 - Each display and each native desktop has its own arrangement.
 - A window dragged to another display joins its active desktop and tiles with its windows.
 - Tiling pauses while the left mouse button is held and resumes when dragging finishes.
-- A 0.5-second polling interval covers window creation, closure and desktop transitions.
+- Window creation, closure, visibility and geometry events schedule tiling after a
+  40 ms coalescing window. A 2-second fallback scan covers missed notifications.
+- Tiling waits for desktop transfers and a short settling period after Space changes.
+- Returning to a desktop preserves its window order and main pane.
+- Windows that reject a requested size receive at most two attempts for an unchanged
+  target and observed frame. Reflow (Ctrl + Option + R) explicitly retries.
 - Layout cycle: Tall → Wide → Fullscreen → Floating.
 - Dialogs, fullscreen/minimized windows, System Settings, Hammerspoon, KeePassXC
   and explicitly floating windows do not occupy tiles.
@@ -117,6 +123,7 @@ Run the behavioral tests with Lua:
 lua tests/tiler.lua
 lua tests/desktops.lua
 lua tests/mission-control.lua
+lua tests/omarchy.lua
 ```
 
 ## Backups and rollback

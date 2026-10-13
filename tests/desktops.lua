@@ -1,4 +1,5 @@
-local timers,alerts={},{}
+local alerts={}
+local timerAPI,advance=dofile("tests/timers.lua")()
 local screens={}
 local function screen(id,x,spaces,active)
     local s={sid=id,x=x,spaces=spaces,active=active}
@@ -18,20 +19,10 @@ function w:isVisible() return true end
 local focusCount=0
 function w:focus() focusCount=focusCount+1 end
 local focused=w
-local function timer(fn)
-    local t={fn=fn,stopped=false}
-    function t:stop() self.stopped=true end
-    timers[#timers+1]=t;return t
-end
 local posted={}
-local clock=0
-local function drain()
-    for _=1,100 do
-        clock=clock+0.1
-        local snapshot={table.unpack(timers)}
-        for _,t in ipairs(snapshot) do if not t.stopped then t.fn() end end
-    end
-end
+local shortcutsWork=true
+local preferenceReads=0
+local function drain() advance(10) end
 local originalLoadlib=package.loadlib
 local moveWorks=true
 local creationWorks=true
@@ -57,7 +48,7 @@ hs={
     mouse={getCurrentScreen=function() return pointer.x>=1000 and right or left end,
         absolutePosition=function(p) if p then pointer={x=p.x,y=p.y} end;return pointer end},
     screen={mainScreen=function() return left end},
-    plist={read=function() return {AppleSymbolicHotKeys={
+    plist={read=function() preferenceReads=preferenceReads+1;return {AppleSymbolicHotKeys={
         ['79']={enabled=true,value={parameters={65535,123,11534336}}},
         ['81']={enabled=true,value={parameters={65535,124,11534336}}},
     }} end},
@@ -66,16 +57,14 @@ hs={
         function event:rawFlags(flags) self.flags=flags;return self end
         function event:post()
             posted[#posted+1]={flags=self.flags,code=code,down=down}
-            if down then
+            if down and shortcutsWork then
                 local s=pointer.x>=1000 and right or left
                 for i,id in ipairs(s.spaces) do if id==s.active then s.active=s.spaces[i+(code==124 and 1 or -1)];break end end
             end
         end
         return event
     end}},
-    timer={secondsSinceEpoch=function() return clock end,
-        doEvery=function(_,fn) return timer(fn) end,
-        doAfter=function(_,fn) local t;t=timer(function() t:stop();fn() end);return t end},
+    timer=timerAPI,
     alert={show=function(message) alerts[#alerts+1]=message end}
 }
 package.loaded['mission-control']={open=function() end,close=hs.spaces.closeMissionControl,add=function(s) return hs.spaces.addSpaceToScreen(s,false) end}
@@ -107,4 +96,47 @@ local result
 D.moveToSpace(w,12,function(ok) result=ok end);drain()
 assert(result==false and #alerts==3,'verify actual membership and report silent API failure')
 focused=nil;assert(D.keyboardScreen()==right,'empty desktop falls back to pointer monitor')
-print('PASS: 17 desktop behaviors')
+focused=w;moveWorks=true;creationWorks=true
+left.active=10;w.space=10
+assert(D.goToNumber(2,left))
+assert(D.goToNumber(3,left))
+assert(D.goToNumber(4,left))
+drain()
+assert(left.active==D.userSpaces(left)[4] and not D.queued,'latest queued number wins')
+left.active=10
+D.cycle(1,left);D.cycle(1,left);D.cycle(1,left);drain()
+assert(left.active==D.userSpaces(left)[4],'scroll accumulates against intended destination')
+
+left.active=10;w.space=10
+assert(D.moveWindow(2))
+assert(D.goToNumber(4,left))
+assert(D.transfer and not D.busy and D.queued,'navigation waits for transfer owner')
+drain()
+assert(w.space==12 and left.active==D.userSpaces(left)[4] and not D.transfer,'transfer completes before queued navigation')
+
+left.active=10;w.space=10
+local before=#posted
+D.goToNumber(2,left);advance(0.001)
+assert(#posted==before+2,'already focused display sends shortcut without 150ms delay')
+drain()
+assert(not D.isChanging(),'transition and settle guards released')
+-- One preferences read for the complete multi-hop transition.
+left.active=10
+local reads=preferenceReads
+D.goToNumber(5,left);drain()
+assert(preferenceReads==reads+1,'shortcut preferences cached for one transition')
+
+-- A failed transition clears pending work and every transition timer.
+left.active=10;shortcutsWork=false
+D.goToNumber(2,left);D.goToNumber(4,left);drain()
+assert(not D.busy and not D.queued and not D.keyTimer and not D.isChanging(),'timeout releases transition state and cancels queued intent')
+shortcutsWork=true
+D.goToNumber(2,left);drain()
+assert(left.active==12,'navigation recovers after timeout')
+
+-- If native state reaches the destination before a delayed key, cancel it.
+left.active=10;focused=nil;pointer={x=1200,y=200}
+local count=#posted
+D.goToNumber(2,left);left.active=12;advance(0.2)
+assert(#posted==count and not D.keyTimer,'completion cancels delayed stale shortcut')
+print('PASS: desktop navigation, transfers, creation, queueing and timing')

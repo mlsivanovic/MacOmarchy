@@ -1,3 +1,4 @@
+local timerAPI,advance=dofile("tests/timers.lua")()
 -- Behavioral tests: desktop isolation, lifecycle and cross-display placement.
 local windows, focused, held={},nil,false
 local screens={}
@@ -31,7 +32,7 @@ hs={
     screen={mainScreen=function() return left end,allScreens=function() return screens end},
     spaces={activeSpaceOnScreen=function(s) return s.space end,windowSpaces=function(w) return {w.space} end},
     eventtap={checkMouseButtons=function() return {left=held} end},
-    timer={doEvery=function() return {} end,doAfter=function(_,fn) fn();return {} end},
+    timer=timerAPI,
     alert={show=function() end}
 }
 package.loaded.desktops={moveToSpace=function(w,space) w.space=space;return true end}
@@ -63,4 +64,56 @@ E.toggleFloat();assert(second.f.w==954,'toggle returns window to tiles')
 windows={second,inactive,dialog};E.reflow()
 assert(second.f.w==1912,'closure restores remaining window full size')
 E.enabled=false;second.f.w=555;E.reflow();assert(second.f.w==555,'disabled tiling leaves frame alone')
-print('PASS: 11 tiling behaviors')
+-- Preserve a user-selected main window over an inactive-desktop round trip.
+E.enabled=true;windows={};E.groups={};E.screens={};E.floating={}
+left.space=10
+local a=window(201,left,10)
+local b=window(202,left,10)
+focused=b;E.reflow();E.swap(0,true)
+assert(E.groups['display-1:10'].order[1]==202)
+left.space=11;E.reflow();left.space=10;E.reflow()
+assert(E.groups['display-1:10'].order[1]==202,'workspace round trip preserves main window')
+
+-- An app enforcing minimum width must not receive endless resize attempts.
+local writes=0
+function a:setFrame(frame)
+    writes=writes+1
+    self.f={x=frame.x,y=frame.y,w=1200,h=frame.h}
+end
+a.f.w=1200
+for _=1,10 do E.reflow() end
+assert(writes<=2,'bounded retries for constrained window')
+local previous=writes
+E.resize(-0.05)
+assert(writes>previous,'changed layout target retries constrained window')
+previous=writes
+a.f.x=a.f.x+50;E.reflow()
+assert(writes>previous,'external geometry change permits retry')
+
+local changing=true
+package.loaded.desktops.isChanging=function() return changing end
+b.f.w=400;E.reflow();advance(0.1)
+assert(b.f.w==400,'no geometry changes during desktop transition')
+changing=false;advance(0.06)
+assert(b.f.w~=400,'pending tiling resumes after transition')
+held=true;b.f.w=410;E.schedule();advance(0.2)
+assert(b.f.w==410,'scheduled tiling waits for drag release')
+held=false;advance(0.06)
+assert(b.f.w~=410,'drag release tiles without waiting for fallback poll')
+
+local scans=0
+E.windowSource=function() scans=scans+1;return windows end
+E.schedule();E.schedule();E.schedule();advance(0.041)
+assert(scans==1,'event burst coalesces into one inventory read')
+local activeCalls=0
+local originalActive=hs.spaces.activeSpaceOnScreen
+hs.spaces.activeSpaceOnScreen=function(s) activeCalls=activeCalls+1;return originalActive(s) end
+E.reflow();assert(activeCalls==#screens,'one active-Space query per display')
+
+-- Destroyed IDs disappear from hidden groups and per-window state too.
+E.floating[202]=true;left.space=11
+E.forget(202)
+assert(#E.groups['display-1:10'].order==1 and E.floating[202]==nil,'destroy cleans inactive state')
+left.space=10;windows={};E.reflow()
+assert(#E.groups['display-1:10'].order==0,'empty active desktop is reconciled')
+print('PASS: tiling lifecycle, ordering, scheduling and constrained geometry')

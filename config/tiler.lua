@@ -1,6 +1,6 @@
 -- One owner of window geometry. Groups are native display UUID + active Space.
 local desktops = require("desktops")
-local E = {enabled=true, groups={}, floating={}, screens={}, targets={}, errors={}}
+local E = {enabled=true, groups={}, floating={}, screens={}, targets={}, errors={}, attempts={}}
 local layouts = {"tall", "wide", "fullscreen", "floating"}
 local excluded = { ["org.hammerspoon.Hammerspoon"]=true,
     ["com.apple.systempreferences"]=true, ["org.keepassxc.keepassxc"]=true }
@@ -47,22 +47,63 @@ local function rects(frame,n,layout,ratio)
     return out
 end
 
+-- One pending pass merges bursts without indefinitely postponing work.
+function E.schedule(delay)
+    if E.pending then return end
+    E.pending=hs.timer.doAfter(delay or 0.04,function()
+        E.pending=nil
+        E.reflow()
+    end)
+end
+
+function E.forget(id)
+    if not id then return end
+    E.screens[id],E.floating[id],E.targets[id],E.errors[id],E.attempts[id]=nil,nil,nil,nil,nil
+    for _,g in pairs(E.groups) do
+        for i=#g.order,1,-1 do if g.order[i]==id then table.remove(g.order,i) end end
+    end
+    E.schedule()
+end
+
+function E.windowMoved(w)
+    local id=w:id()
+    if not id then return end
+    local target=E.targets[id]
+    local attempt=E.attempts[id]
+    local frame=w:frame()
+    -- Ignore our own AX notifications, including a constrained accepted size.
+    if target and not different(frame,target) then return end
+    if attempt and attempt.actual and not different(frame,attempt.actual) then return end
+    E.schedule()
+end
+
 function E.reflow()
-    if not E.enabled or hs.eventtap.checkMouseButtons().left then return end
-    local buckets={}
-    for _,w in ipairs(hs.window.visibleWindows()) do
+    if not E.enabled then return end
+    if hs.eventtap.checkMouseButtons().left or (desktops.isChanging and desktops.isChanging()) then
+        E.schedule(0.05)
+        return
+    end
+    local buckets,active={},{}
+    for _,screen in ipairs(hs.screen.allScreens()) do
+        local space=hs.spaces.activeSpaceOnScreen(screen)
+        active[screen:id()]=space
+        if space then buckets[key(screen,space)]={screen=screen,windows={}} end
+    end
+    local windows=E.windowSource and E.windowSource() or hs.window.visibleWindows()
+    for _,w in ipairs(windows) do
         local id=w:id()
         if id then
             local s=w:screen()
             if s then
                 local previous=E.screens[id]
                 E.screens[id]=s:id()
-                local space=hs.spaces.activeSpaceOnScreen(s)
+                local space=active[s:id()]
+                local eligible=space and manageable(w)
                 -- Dragging across displays must join that display's active Space.
-                if previous and previous~=s:id() and manageable(w) and not onSpace(w,space) then
-                    desktops.moveToSpace(w,space,E.reflow)
+                if previous and previous~=s:id() and eligible and not onSpace(w,space) then
+                    desktops.moveToSpace(w,space,function() E.schedule() end)
                 end
-                if manageable(w) and onSpace(w,space) then
+                if eligible and onSpace(w,space) then
                     local k=key(s,space)
                     buckets[k]=buckets[k] or {screen=s,windows={}}
                     buckets[k].windows[id]=w
@@ -83,20 +124,29 @@ function E.reflow()
         table.sort(added)
         for _,id in ipairs(added) do table.insert(order,id) end
         g.order=order
-        if g.layout~="floating" then
+        if g.layout~="floating" and #order>0 then
             local frames=rects(bucket.screen:frame(),#order,g.layout,g.ratio)
             for i,id in ipairs(order) do
                 local w,frame=bucket.windows[id],frames[i]
                 E.targets[id]=frame
-                if different(w:frame(),frame) then
+                local actual=w:frame()
+                local attempt=E.attempts[id]
+                if not attempt or different(attempt.target,frame)
+                  or (attempt.actual and different(attempt.actual,actual)) then
+                    attempt={target=frame,count=0}
+                    E.attempts[id]=attempt
+                end
+                if different(actual,frame) and attempt.count<2 then
+                    attempt.count=attempt.count+1
                     local ok,err=pcall(function() w:setFrame(frame,0) end)
-                    if not ok then E.errors[id]=tostring(err) end
+                    attempt.actual=w:frame()
+                    E.errors[id]=not ok and tostring(err) or nil
                 end
             end
         end
     end
-    -- Remove stale IDs after closure or a move to another desktop.
-    for k,g in pairs(E.groups) do if not buckets[k] then g.order={} end end
+    -- Only active groups were reconciled. Inactive desktops keep their order;
+    -- windowDestroyed removes known closed IDs even from inactive groups.
 end
 
 function E.setLayout(layout)
@@ -148,13 +198,16 @@ E.commands={
     a=function() E.setLayout("tall") end,b=function() E.setLayout("tall") end,
     w=function() E.setLayout("wide") end,f=function() E.setLayout("fullscreen") end,
     ["shift:f"]=function() E.setLayout("floating") end,t=E.toggleFloat,["shift:t"]=E.toggle,
-    i=E.showLayout,r=E.reflow,m=function() E.swap(0,true) end,
+    i=E.showLayout,r=function() E.attempts={};E.reflow() end,m=function() E.swap(0,true) end,
     ["-"]=function() E.resize(-0.05) end,["="]=function() E.resize(0.05) end,
     ["shift:left"]=function() E.swap(-1) end,["shift:right"]=function() E.swap(1) end,
     ["shift:up"]=function() E.moveMonitor(-1) end,["shift:down"]=function() E.moveMonitor(1) end,
 }
--- Polling also covers missed app/Space notifications on newer macOS versions.
--- No geometry changes while a drag is in progress; mouse-up settles next tick.
-E.timer=hs.timer.doEvery(0.5,E.reflow)
+-- Events drive normal work; this slower scan recovers missed notifications.
+E.timer=hs.timer.doEvery(2,function()
+    E.windowSource=nil
+    E.reflow()
+    E.windowSource=E.cachedWindowSource
+end)
 E.reflow()
 return E
