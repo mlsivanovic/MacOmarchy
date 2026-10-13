@@ -42,4 +42,7 @@ events.windowMoved();assert(moved==1,'geometry events forward to self-event supp
 spaceCallback();assert(settled==1 and requests[#requests]==0.15,'Space watcher starts settle guard')
 screenCallback();assert(requests[#requests]==0.04,'display changes schedule tiling')
 M.desktops.afterChange();assert(requests[#requests]==0.15,'desktop completion schedules coalesced tiling')
+local labels={}
+for _,action in ipairs(M.actions) do labels[action.text]=true end
+assert(labels['App — exclude from tiling'] and labels['Tiling — manage excluded apps'],'exclude actions are in the command menu')
 print('PASS: lifecycle, Space and display event integration')

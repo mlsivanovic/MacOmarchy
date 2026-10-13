@@ -22,7 +22,13 @@ local function window(id,s,space)
     function w:isFullScreen() return self.fullscreen or false end
     function w:isMinimized() return self.minimized or false end
     function w:isVisible() return self.visible end
-    function w:application() return {isHidden=function() return false end,bundleID=function() return 'test.app' end} end
+    function w:application()
+        return {
+            isHidden=function() return false end,
+            bundleID=function() return self.bundleID or 'test.app' end,
+            name=function() return self.appName or 'Test' end,
+        }
+    end
     function w:moveToScreen(s) self.s=s;self.f={x=s.x+100,y=100,w=600,h=400} end
     windows[#windows+1]=w;return w
 end
@@ -116,4 +122,43 @@ E.forget(202)
 assert(#E.groups['display-1:10'].order==1 and E.floating[202]==nil,'destroy cleans inactive state')
 left.space=10;windows={};E.reflow()
 assert(#E.groups['display-1:10'].order==0,'empty active desktop is reconciled')
+assert(E.excludesFile()==nil,'tests do not read the home excludes file')
+windows={};E.groups={};E.screens={};E.floating={};E.userExcluded={};E.targets={};E.attempts={}
+left.space=10
+local zoom=window(301,left);zoom.bundleID='us.zoom.xos';zoom.appName='Zoom'
+local notes=window(302,left);notes.bundleID='com.apple.Notes';notes.appName='Notes'
+E.reflow()
+assert(zoom.f.w==954 and notes.f.w==954,'both apps tile before an exclude')
+focused=zoom
+assert(E.toggleFocused()=='excluded','focused app can be excluded without a bundle id lookup')
+assert(zoom.f.w==954 and notes.f.w==1912,'excluded app keeps its frame and the other window fills')
+local zoom2=window(303,left);zoom2.bundleID='us.zoom.xos'
+E.reflow()
+assert(zoom2.f.w==600 and notes.f.w==1912,'new window of an excluded app is not tiled')
+assert(E.toggleApp('us.zoom.xos','Zoom')=='tiled')
+assert(notes.f.w==954,'including the app tiles it with the others again')
+local kp=window(304,left);kp.bundleID='org.keepassxc.keepassxc';kp.appName='KeePassXC'
+local only=window(305,left)
+windows={kp,only};E.groups={};E.reflow()
+assert(only.f.w==1912 and kp.f.w==600,'built-in exclude skips KeePassXC')
+assert(E.toggleApp('org.keepassxc.keepassxc','KeePassXC')=='builtin')
+assert(E.userExcluded['org.keepassxc.keepassxc']==nil,'built-in exclude cannot be removed')
+
+local dir=os.tmpname();os.remove(dir)
+local path=dir..'/tiling-excludes.json'
+E._excludesFile=path
+E.userExcluded={}
+assert(E.toggleApp('us.zoom.xos','Zoom')=='excluded')
+assert(E.toggleApp('com.example.App','Weird "Name"')=='excluded')
+E.userExcluded={leftover='x'}
+assert(E.loadExcludes()==true)
+assert(E.userExcluded['us.zoom.xos']=='Zoom' and E.userExcluded['com.example.App']=='Weird "Name"'
+    and E.userExcluded.leftover==nil,'exclude file round-trips names and replaces memory')
+local saved=E.userExcluded
+local corrupt=io.open(path,'w');corrupt:write('{');corrupt:close()
+assert(E.loadExcludes()==false and E.userExcluded==saved,'invalid exclude file keeps the previous list')
+os.remove(path);os.remove(dir)
+E._excludesFile=nil
+local listed=E.excludedApps()
+assert(listed[1].builtin==false and listed[#listed].builtin==true,'user excludes sort before built-ins')
 print('PASS: tiling lifecycle, ordering, scheduling and constrained geometry')

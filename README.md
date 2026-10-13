@@ -23,6 +23,7 @@ and the default screenshot shortcuts.
 | Ctrl + Option + F | Fill the working area with one window |
 | Ctrl + Option + Shift + F | Floating layout for manual arrangement |
 | Ctrl + Option + T | Toggle floating for the active window |
+| Ctrl + Option + X | Exclude / include the focused app |
 | Ctrl + Option + Shift + T | Enable / disable automatic tiling |
 | Ctrl + Option + I / R | Show the layout / reflow windows |
 | Ctrl + Option + Shift + ← / → | Swap with the previous / next window |
@@ -70,8 +71,14 @@ available through the command menu or the macOS Screenshot app.
 - Windows that reject a requested size receive at most two attempts for an unchanged
   target and observed frame. Reflow (Ctrl + Option + R) explicitly retries.
 - Layout cycle: Tall → Wide → Fullscreen → Floating.
-- Dialogs, fullscreen/minimized windows, System Settings, Hammerspoon, KeePassXC
-  and explicitly floating windows do not occupy tiles.
+- Dialogs, fullscreen/minimized windows, and explicitly floating windows do not
+  occupy tiles.
+- Hammerspoon, System Settings and KeePassXC are always excluded. Ctrl + Option + X
+  excludes or includes the focused application, and the command menu action
+  “Tiling — manage excluded apps” lists that app, the remembered apps and other
+  running apps. Choices persist in `~/.config/mac-omarchy/tiling-excludes.json`
+  (bundle id → name) and survive a Hammerspoon reload. Ctrl + Option + T still
+  floats only the current window until reload.
 - Existing native Shortcuts for arranging the last 2–4 windows are available from
   the menu after switching to Floating layout.
 

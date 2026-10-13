@@ -92,6 +92,78 @@ local commands = {
 for _, c in ipairs(commands) do
     add(c[1], "Ctrl + Option + " .. (c[3] == shift and "Shift + " or "") .. c[2], keys(c[3], c[2]),c[3],c[2])
 end
+
+local function frontApp()
+    local w = hs.window.focusedWindow and hs.window.focusedWindow() or nil
+    if not w then w = previousWindow end
+    if not w or not w.application then return end
+    local ok, app = pcall(function() return w:application() end)
+    if not ok or not app or not app.bundleID then return end
+    local id = app:bundleID()
+    if not id or id == "" then return end
+    return id, (app.name and app:name()) or id
+end
+
+-- Searchable list: the focused app, remembered excludes, then other running apps.
+function M.manageExcludes(query)
+    if not M.excludeChooser then
+        M.excludeChooser = hs.chooser.new(function(choice)
+            if not choice or not choice.bundleID then return end
+            local keep = ""
+            pcall(function() keep = M.excludeChooser:query() or "" end)
+            M.tiler.toggleApp(choice.bundleID, choice.name)
+            hs.timer.doAfter(0.05, function() M.manageExcludes(keep) end)
+        end)
+        M.excludeChooser:searchSubText(true):rows(14):width(60):placeholderText("Exclude or include an app")
+    end
+    local choices, seen = {}, {}
+    local function row(id, display, name, sub)
+        if not id or seen[id] then return end
+        seen[id] = true
+        choices[#choices+1] = {text=display, subText=sub .. " · " .. id, bundleID=id, name=name}
+    end
+    local function describe(id)
+        if M.tiler.isBuiltin(id) then return "Always excluded" end
+        if M.tiler.isExcluded(id) then return "Excluded · select to tile again" end
+        return "Select to exclude from tiling"
+    end
+    local fid, fname = frontApp()
+    if fid and fname then row(fid, fname .. " — focused", fname, describe(fid)) end
+    for _, item in ipairs(M.tiler.excludedApps()) do
+        row(item.bundleID, item.name, item.name, describe(item.bundleID))
+    end
+    local running = {}
+    if hs.application and hs.application.runningApplications then
+        local ok, apps = pcall(hs.application.runningApplications)
+        if ok and apps then
+            for _, app in ipairs(apps) do
+                local id, name, kind
+                local readOk = pcall(function()
+                    id = app:bundleID()
+                    name = app:name()
+                    kind = app.kind and app:kind() or 1
+                end)
+                if readOk and id and id ~= "" and name and name ~= "" and not seen[id] and kind ~= 0 then
+                    running[#running+1] = {id=id, name=name}
+                end
+            end
+        end
+    end
+    table.sort(running, function(a, b) return a.name:lower() < b.name:lower() end)
+    for _, app in ipairs(running) do
+        row(app.id, app.name, app.name, "Select to exclude from tiling")
+    end
+    M.excludeChooser:choices(choices):query(query or ""):show()
+end
+
+add("App — exclude from tiling", "Ctrl + Option + X · this app stays floating", function()
+    if M.fromMenu and M.menuApp then
+        M.tiler.toggleApp(M.menuApp.bundleID, M.menuApp.name)
+    else
+        M.tiler.toggleFocused()
+    end
+end, mod, "x")
+add("Tiling — manage excluded apps", "Add or remove apps that stay floating", function() M.manageExcludes() end)
 for i = 1, 9 do
     add("Desktop — " .. i .. " on the current display", "Cmd + " .. i,
         function() M.desktops.goToNumber(i) end, launchMod, tostring(i))
@@ -129,13 +201,26 @@ add("Tiling — automatic arrangement", "Hammerspoon · Tall", function() M.tile
 add("Reload Hammerspoon", "Load configuration changes", function() hs.reload() end)
 
 M.chooser = hs.chooser.new(function(choice)
-    if not choice then return end
+    if not choice then M.menuApp = nil; return end
     if previousWindow then pcall(function() previousWindow:focus() end) end
-    hs.timer.doAfter(0.15, function() M.actions[choice.actionIndex].run() end)
+    hs.timer.doAfter(0.15, function()
+        -- The menu took focus, so exclude uses the app captured when it opened.
+        M.fromMenu = true
+        M.actions[choice.actionIndex].run()
+        M.fromMenu = false
+        M.menuApp = nil
+    end)
 end)
 M.chooser:searchSubText(true):rows(12):width(55):placeholderText("Commands, apps, layouts, themes…")
 function M.show(query)
-    previousWindow = hs.window.focusedWindow()
+    previousWindow = hs.window.focusedWindow and hs.window.focusedWindow() or nil
+    M.menuApp = nil
+    if previousWindow and previousWindow.application then
+        local ok, app = pcall(function() return previousWindow:application() end)
+        if ok and app and app.bundleID and app:bundleID() then
+            M.menuApp = {bundleID=app:bundleID(), name=(app.name and app:name()) or app:bundleID()}
+        end
+    end
     local choices = {}
     for i, action in ipairs(M.actions) do
         table.insert(choices, {text=action.text, subText=action.subText, actionIndex=i})
@@ -153,6 +238,8 @@ M.bar:setMenu(function()
         {title="Current layout — Ctrl + Option + I", fn=keys(mod,"i")},
         {title="Next layout — Ctrl + Option + L", fn=keys(mod,"l")},
         {title="Floating window — Ctrl + Option + T", fn=keys(mod,"t")},
+        {title="Exclude focused app — Ctrl + Option + X", fn=function() M.tiler.toggleFocused() end},
+        {title="Excluded apps…", fn=function() M.manageExcludes() end},
         {title="Enable / disable tiling", fn=keys(shift,"t")},
         {title="-"},
         {title="Catppuccin Mocha", fn=function() M.setTheme(true) end},

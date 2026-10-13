@@ -1,9 +1,14 @@
 -- One owner of window geometry. Groups are native display UUID + active Space.
 local desktops = require("desktops")
-local E = {enabled=true, groups={}, floating={}, screens={}, targets={}, errors={}, attempts={}}
+local E = {enabled=true, groups={}, floating={}, screens={}, targets={}, errors={}, attempts={}, userExcluded={}}
 local layouts = {"tall", "wide", "fullscreen", "floating"}
-local excluded = { ["org.hammerspoon.Hammerspoon"]=true,
-    ["com.apple.systempreferences"]=true, ["org.keepassxc.keepassxc"]=true }
+-- These stay out of the layout even when the user list is empty.
+local builtinExcluded = {
+    ["org.hammerspoon.Hammerspoon"]="Hammerspoon",
+    ["com.apple.systempreferences"]="System Settings",
+    ["com.apple.SystemSettings"]="System Settings",
+    ["org.keepassxc.keepassxc"]="KeePassXC",
+}
 local function key(screen, space) return screen:getUUID() .. ":" .. tostring(space) end
 local function currentGroup()
     local w=hs.window.focusedWindow()
@@ -20,7 +25,7 @@ end
 local function manageable(w)
     if not w:isStandard() or w:isFullScreen() or w:isMinimized() or not w:isVisible() then return false end
     local app=w:application()
-    if not app or app:isHidden() or excluded[app:bundleID()] or E.floating[w:id()] then return false end
+    if not app or app:isHidden() or E.isExcluded(app:bundleID()) or E.floating[w:id()] then return false end
     return true
 end
 local function different(a,b)
@@ -149,6 +154,187 @@ function E.reflow()
     -- windowDestroyed removes known closed IDs even from inactive groups.
 end
 
+local function escapeJSON(s)
+    return (tostring(s):gsub('[%z\1-\31\\"]', function(c)
+        if c == "\\" then return "\\\\"
+        elseif c == '"' then return '\\"'
+        elseif c == "\n" then return "\\n"
+        elseif c == "\r" then return "\\r"
+        elseif c == "\t" then return "\\t"
+        else return string.format("\\u%04x", string.byte(c)) end
+    end))
+end
+local function encodeExcludes(map)
+    local ids = {}
+    for id in pairs(map) do ids[#ids+1] = id end
+    table.sort(ids)
+    if #ids == 0 then return "{}\n" end
+    local lines = {"{"}
+    for i, id in ipairs(ids) do
+        local comma = i < #ids and "," or ""
+        lines[#lines+1] = '  "' .. escapeJSON(id) .. '": "' .. escapeJSON(map[id]) .. '"' .. comma
+    end
+    lines[#lines+1] = "}"
+    return table.concat(lines, "\n") .. "\n"
+end
+local function decodeExcludes(raw)
+    if type(raw) ~= "string" then return nil end
+    local i, n = 1, #raw
+    local function skip()
+        while i <= n and raw:sub(i, i):match("%s") do i = i + 1 end
+    end
+    local function parseString()
+        skip()
+        if raw:sub(i, i) ~= '"' then return nil end
+        i = i + 1
+        local buf = {}
+        while i <= n do
+            local c = raw:sub(i, i)
+            if c == '"' then i = i + 1; return table.concat(buf) end
+            if c == "\\" then
+                local e = raw:sub(i + 1, i + 1)
+                if e == "" then return nil end
+                if e == "n" then buf[#buf+1] = "\n"
+                elseif e == "r" then buf[#buf+1] = "\r"
+                elseif e == "t" then buf[#buf+1] = "\t"
+                elseif e == "u" then
+                    local hex = raw:sub(i + 2, i + 5)
+                    if not hex:match("^%x%x%x%x$") then return nil end
+                    buf[#buf+1] = string.char(tonumber(hex, 16))
+                    i = i + 4
+                else buf[#buf+1] = e end
+                i = i + 2
+            else
+                buf[#buf+1] = c
+                i = i + 1
+            end
+        end
+    end
+    skip()
+    if raw:sub(i, i) ~= "{" then return nil end
+    i = i + 1
+    skip()
+    local out = {}
+    if raw:sub(i, i) == "}" then return out end
+    while i <= n do
+        local key = parseString()
+        if not key or key == "" then return nil end
+        skip()
+        if raw:sub(i, i) ~= ":" then return nil end
+        i = i + 1
+        local value = parseString()
+        if not value then return nil end
+        out[key] = value
+        skip()
+        local c = raw:sub(i, i)
+        if c == "," then i = i + 1
+        elseif c == "}" then return out
+        else return nil end
+    end
+end
+local function shellQuote(s)
+    return "'" .. tostring(s):gsub("'", "'\\''") .. "'"
+end
+
+-- Remembered in ~/.config so copying Hammerspoon config does not wipe the list.
+function E.excludesFile()
+    if E._excludesFile ~= nil then
+        if E._excludesFile == false then return nil end
+        return E._excludesFile
+    end
+    if not hs.configdir then return nil end
+    local home = os.getenv("HOME")
+    if not home or home == "" then return nil end
+    return home .. "/.config/mac-omarchy/tiling-excludes.json"
+end
+function E.isBuiltin(bundleID)
+    return bundleID ~= nil and builtinExcluded[bundleID] ~= nil
+end
+function E.isExcluded(bundleID)
+    if not bundleID then return false end
+    return E.isBuiltin(bundleID) or E.userExcluded[bundleID] ~= nil
+end
+function E.loadExcludes()
+    local path = E.excludesFile()
+    if not path then return true end
+    local f = io.open(path, "r")
+    if not f then E.userExcluded = {}; return true end
+    local raw = f:read("*a")
+    f:close()
+    if not raw or raw:match("^%s*$") then E.userExcluded = {}; return true end
+    local data = decodeExcludes(raw)
+    if not data then
+        if hs.alert then hs.alert.show("Tiling excludes file is invalid") end
+        return false
+    end
+    local nextMap = {}
+    for id, name in pairs(data) do
+        if not E.isBuiltin(id) then nextMap[id] = (name ~= "" and name) or id end
+    end
+    E.userExcluded = nextMap
+    return true
+end
+function E.saveExcludes()
+    local path = E.excludesFile()
+    if not path then return true end
+    local dir = path:match("^(.*)/")
+    if dir and dir ~= "" then os.execute("mkdir -p " .. shellQuote(dir)) end
+    local f = io.open(path, "w")
+    if not f then return false end
+    f:write(encodeExcludes(E.userExcluded))
+    f:close()
+    return true
+end
+function E.excludedApps()
+    local list = {}
+    for id, name in pairs(E.userExcluded) do
+        list[#list+1] = {bundleID=id, name=name, builtin=false}
+    end
+    for id, name in pairs(builtinExcluded) do
+        list[#list+1] = {bundleID=id, name=name, builtin=true}
+    end
+    table.sort(list, function(a, b)
+        if a.builtin ~= b.builtin then return not a.builtin end
+        if a.name:lower() ~= b.name:lower() then return a.name:lower() < b.name:lower() end
+        return a.bundleID < b.bundleID
+    end)
+    return list
+end
+function E.toggleApp(bundleID, name)
+    if not bundleID or bundleID == "" then
+        hs.alert.show("This application has no bundle id")
+        return
+    end
+    name = (name and name ~= "" and name) or bundleID
+    if E.isBuiltin(bundleID) then
+        hs.alert.show(name .. " stays excluded")
+        return "builtin"
+    end
+    local message
+    if E.userExcluded[bundleID] then
+        E.userExcluded[bundleID] = nil
+        message = name .. " tiles again"
+    else
+        E.userExcluded[bundleID] = name
+        message = name .. " excluded from tiling"
+    end
+    local saved = E.saveExcludes()
+    E.reflow()
+    hs.alert.show(saved and message or (message .. " · not saved"))
+    if not saved then return "unsaved" end
+    return E.userExcluded[bundleID] and "excluded" or "tiled"
+end
+function E.toggleFocused(window)
+    local w = window
+    if not w and hs.window.focusedWindow then w = hs.window.focusedWindow() end
+    local app = w and w.application and w:application()
+    if not app or not app.bundleID then
+        hs.alert.show("No focused application")
+        return
+    end
+    return E.toggleApp(app:bundleID(), app.name and app:name() or nil)
+end
+
 function E.setLayout(layout)
     local g=currentGroup();if not g then return end
     g.layout=layout;E.reflow();hs.alert.show(layout == "tall" and "Tall" or layout)
@@ -209,5 +395,6 @@ E.timer=hs.timer.doEvery(2,function()
     E.reflow()
     E.windowSource=E.cachedWindowSource
 end)
+E.loadExcludes()
 E.reflow()
 return E
