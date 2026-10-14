@@ -187,8 +187,12 @@ M.windowFilter:subscribe(hs.window.filter.windowMoved,M.tiler.windowMoved)
 M.spaceWatcher = hs.spaces.watcher.new(function()
     M.desktops.settle()
     M.tiler.schedule(0.15)
+    if M.updateStatus then M.updateStatus() end
 end):start()
-M.screenWatcher = hs.screen.watcher.new(function() M.tiler.schedule() end):start()
+M.screenWatcher = hs.screen.watcher.new(function()
+    M.tiler.schedule()
+    if M.updateStatus then M.updateStatus() end
+end):start()
 
 -- Native Shortcuts run after automatic tiling is put into Floating layout.
 for n = 2, 4 do
@@ -256,6 +260,7 @@ function M.updateStatus()
     end
     M.bar:setTitle("⌘ " .. index)
 end
-M.timer = hs.timer.doEvery(2, M.updateStatus)
+-- Space/screen watchers refresh the title on change; this is only a fallback.
+M.timer = hs.timer.doEvery(10, M.updateStatus)
 M.updateStatus()
 return M

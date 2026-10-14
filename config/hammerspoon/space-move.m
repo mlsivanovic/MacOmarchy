@@ -33,12 +33,26 @@ static void *bridgeFunction(void) {
 }
 
 static BOOL moveWindow(uint64_t window, uint64_t space) {
-    void *framework=dlopen("/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight",RTLD_NOW);
-    Class type=NSClassFromString(@"SLSBridgedMoveWindowsToManagedSpaceOperation");
-    int64_t (*perform)(id)=bridgeFunction();
+    // Resolve the framework, class and private entry point once; scanning
+    // every loaded image's symbol table costs milliseconds per move.
+    static void *framework=NULL;
+    static Class type=nil;
+    static int64_t (*perform)(id)=NULL;
+    static BOOL resolved=NO;
+    if (!resolved) {
+        resolved=YES;
+        framework=dlopen("/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight",RTLD_NOW);
+        type=NSClassFromString(@"SLSBridgedMoveWindowsToManagedSpaceOperation");
+        perform=bridgeFunction();
+    }
     if (!framework || !type || !perform) return NO;
     id operation=((id(*)(id,SEL,id,uint64_t))objc_msgSend)([type alloc],sel_registerName("initWithWindows:spaceID:"),@[@(window)],space);
     if (!operation) return NO;
+    // The bridged operation runs asynchronously; keep the latest one alive
+    // instead of letting ARC release it when this function returns.
+    static id retainedOperation=nil;
+    retainedOperation=operation;
+    (void)retainedOperation;
     perform(operation);
     return YES;
 }

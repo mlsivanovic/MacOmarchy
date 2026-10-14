@@ -57,12 +57,18 @@ local function nativeShortcut(direction, preferences)
 end
 
 local function focusScreen(screen)
-    mouseOrigin = mouseOrigin or hs.mouse.absolutePosition()
-    local frame = screen:frame()
-    placedMouse = {x=frame.x+frame.w/2,y=frame.y+frame.h/2}
-    hs.mouse.absolutePosition(placedMouse)
+    -- The native shortcut acts on the display under the pointer, so the
+    -- pointer must be on the target display -- but only move it when it is
+    -- not already there, and only scan/focus windows when focus must move.
     local focused = hs.window.focusedWindow()
-    if sameScreen(focused and focused:screen(), screen) then return false end
+    local focusedHere = sameScreen(focused and focused:screen(), screen)
+    if not sameScreen(hs.mouse.getCurrentScreen(), screen) then
+        mouseOrigin = mouseOrigin or hs.mouse.absolutePosition()
+        local frame = screen:frame()
+        placedMouse = {x=frame.x+frame.w/2,y=frame.y+frame.h/2}
+        hs.mouse.absolutePosition(placedMouse)
+    end
+    if focusedHere then return false end
     for _, window in ipairs(hs.window.orderedWindows()) do
         if window:isStandard() and window:isVisible() and sameScreen(window:screen(), screen) then
             window:focus()
@@ -71,6 +77,8 @@ local function focusScreen(screen)
     end
     -- No visible window exists here. Click the empty desktop to give this
     -- monitor keyboard focus; the 2px edge lies outside the 4px tiled margin.
+    mouseOrigin = mouseOrigin or hs.mouse.absolutePosition()
+    local frame = screen:frame()
     placedMouse = {x=frame.x+2, y=frame.y+frame.h/2}
     hs.eventtap.leftClick(placedMouse)
     return true
@@ -92,7 +100,10 @@ local function finish(errorMessage)
     mouseOrigin, placedMouse = nil, nil
     if errorMessage then hs.alert.show(errorMessage) end
     if D.afterChange then D.afterChange() end
-    if errorMessage then D.queued=nil end
+    if errorMessage and D.queued then
+        local queued=D.queued;D.queued=nil
+        if queued.completion then queued.completion(false) end
+    end
     if completion then completion(not errorMessage) end
     drainNavigation()
 end
@@ -103,11 +114,32 @@ drainNavigation=function()
     D.goToID(request.screen,request.target,request.completion)
 end
 
+-- Cache shortcut preferences by plist mtime; without hs.fs (tests) the
+-- cache never engages and every transition reads the file as before.
+local cachedPreferences, cachedPreferencesMtime
+local function readPreferences()
+    local path=os.getenv("HOME") .. "/Library/Preferences/com.apple.symbolichotkeys.plist"
+    local mtime=nil
+    if hs.fs and hs.fs.attributes then
+        local ok, attrs=pcall(hs.fs.attributes, path)
+        if ok and attrs then mtime=attrs.modification end
+    end
+    if mtime and cachedPreferences and cachedPreferencesMtime==mtime then
+        return cachedPreferences
+    end
+    local ok, preferences=pcall(hs.plist.read, path)
+    if not ok then return nil end
+    if mtime then cachedPreferences, cachedPreferencesMtime=preferences, mtime end
+    return preferences
+end
+
 function D.goToID(screen, target, completion, transferOwner)
     if not screen then return false end
     if D.busy or (D.transfer and not transferOwner) then
         -- Preserve the latest intent instead of silently swallowing input.
+        local replaced=D.queued
         D.queued={screen=screen,target=target,completion=completion}
+        if replaced and replaced.completion then replaced.completion(false) end
         return true
     end
     if hs.spaces.activeSpaceOnScreen(screen) == target then
@@ -118,10 +150,15 @@ function D.goToID(screen, target, completion, transferOwner)
     local targetIndex
     for i,id in ipairs(all) do if id == target then targetIndex=i end end
     if not targetIndex then return false end
+    -- Read preferences before marking busy so a failure cannot wedge D.busy.
+    local preferences=readPreferences()
+    if not preferences then
+        if completion then completion(false) end
+        return false
+    end
     D.busy = true
     D.destination={screen=screen,target=target}
     D.completion=completion
-    local preferences=hs.plist.read(os.getenv("HOME") .. "/Library/Preferences/com.apple.symbolichotkeys.plist")
     local attempts, pendingSpace, deadline = 0, nil, 0
     local function step()
         local current = hs.spaces.activeSpaceOnScreen(screen)
@@ -150,7 +187,7 @@ function D.goToID(screen, target, completion, transferOwner)
             hs.eventtap.event.newKeyEvent({},shortcut.keycode,false):rawFlags(shortcut.flags):post()
         end)
     end
-    D.timer = hs.timer.doEvery(0.12, step)
+    D.timer = hs.timer.doEvery(0.04, step)
     step()
     return true
 end
@@ -160,6 +197,27 @@ function D.goToNumber(number, screen)
     local target = D.userSpaces(screen)[number]
     if not target then hs.alert.show("This display does not have Desktop " .. number); return false end
     return D.goToID(screen, target)
+end
+
+-- One Cmd+scroll moves one desktop. A notch is a burst of wheel events, so
+-- further events are swallowed for a full second after the accepted one.
+-- The window is anchored, not sliding: events inside it do not extend it,
+-- so a continuous scroll advances again once the second has elapsed.
+-- Sub-point fragments accumulate instead of being discarded, so a slow
+-- precise scroll still crosses the threshold. Returns direction, consume.
+function D.scrollGesture(state, now, line, point, momentum)
+    line, point, momentum = line or 0, point or 0, momentum or 0
+    if momentum ~= 0 then return nil, true end
+    if line == 0 and point == 0 then return nil, false end
+    if state.last and now - state.last < 1 then return nil, true end
+    if line == 0 then
+        state.acc = (state.acc or 0) + point
+        if math.abs(state.acc) < 1 then return nil, true end
+        point, state.acc = state.acc, 0
+    end
+    state.last = now
+    local delta = line ~= 0 and line or point
+    return (delta < 0) and 1 or -1, true
 end
 
 function D.cycle(direction, screen)
@@ -182,16 +240,36 @@ function D.ensureNumber(number, screen, callback)
     end
     local target=D.userSpaces(screen)[number]
     if target then callback(target);return true end
-    local pendingCount,deadline,opened=nil,0,true
-    local readyDeadline=hs.timer.secondsSinceEpoch()+3
-    missionControl.open()
-    local function complete(id,errorMessage)
-        if D.creationTimer then D.creationTimer:stop();D.creationTimer=nil end
-        if opened then
-            missionControl.close()
-            D.creationFinish=hs.timer.doAfter(0.2,function() callback(id,errorMessage) end)
-        else callback(id,errorMessage) end
+    -- Serialize creations: parallel calls share D.creationTimer, so a second
+    -- call must queue instead of overwriting the first call's timer.
+    if D.creating then
+        D.creationQueue=D.creationQueue or {}
+        D.creationQueue[#D.creationQueue+1]={number=number,screen=screen,callback=callback}
+        return true
     end
+    D.creating=true
+    local pendingCount,deadline=nil,0
+    local readyDeadline=hs.timer.secondsSinceEpoch()+3
+    local completed=false
+    local function complete(id,errorMessage)
+        if completed then return end
+        completed=true
+        if D.creationTimer then D.creationTimer:stop();D.creationTimer=nil end
+        missionControl.close()
+        D.creationFinish=hs.timer.doAfter(0.2,function()
+            D.creationFinish=nil
+            D.creating=nil
+            callback(id,errorMessage)
+            local queue=D.creationQueue
+            if queue and #queue>0 then
+                local nextRequest=table.remove(queue,1)
+                D.ensureNumber(nextRequest.number,nextRequest.screen,nextRequest.callback)
+            end
+        end)
+    end
+    -- A throwing open must release the caller's transfer lock, not wedge it.
+    local openOk, openErr=pcall(missionControl.open)
+    if not openOk then complete(nil,tostring(openErr));return true end
     local function step()
         local list=D.userSpaces(screen)
         if list[number] then complete(list[number]);return end

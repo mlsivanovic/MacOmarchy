@@ -12,14 +12,14 @@ local desktops = require("desktops")
 -- ----------------------------------------------------------------------------
 -- SECTION 1: SPACES AND MISSION CONTROL FUNCTIONS
 -- ----------------------------------------------------------------------------
-local lastSpaceScrollTime = 0
+local spaceScrollStates = {}
 local lastSpaceScrollConsumed = false
 
 -- Native Dock shortcuts are resolved by desktops.lua for the hovered monitor.
 -- Returns true only when a Space transition is handled. With a single Space,
 -- scrolling remains available to the application.
-local function cycleSpaceOnCurrentScreen(direction)
-    return desktops.cycle(direction, hs.mouse.getCurrentScreen())
+local function cycleSpaceOnCurrentScreen(direction, screen)
+    return desktops.cycle(direction, screen or hs.mouse.getCurrentScreen())
 end
 
 -- Open / close Workspace Overview (Mission Control)
@@ -60,6 +60,10 @@ local cycleSession = {
 }
 
 local function endCycleSession()
+    if cycleSession.focusTimer then
+        pcall(function() cycleSession.focusTimer:stop() end)
+        cycleSession.focusTimer = nil
+    end
     cycleSession.active = false
     cycleSession.windows = {}
     cycleSession.index = 1
@@ -68,19 +72,27 @@ end
 
 -- macOS adds an aggregate Ctrl bit to Cmd+scroll (legacy zoom mapping).
 -- Read the physical key (device* bit) instead of aggregate Ctrl.
+-- Masks are resolved once; this runs on every scroll event system-wide.
+local rawFlagMasks = hs.eventtap.event.rawFlagMasks
+local function flagMask(name) return rawFlagMasks[name] or 0 end
+local CMD_MASK = flagMask("deviceLeftCommand") | flagMask("deviceRightCommand") | flagMask("command")
+local CTRL_MASK = flagMask("deviceLeftControl") | flagMask("deviceRightControl")
+local ALT_MASK = flagMask("deviceLeftAlternate") | flagMask("deviceRightAlternate")
+local SHIFT_MASK = flagMask("deviceLeftShift") | flagMask("deviceRightShift")
 local function deviceMods(raw)
-    local masks = hs.eventtap.event.rawFlagMasks
-    local function down(name)
-        local mask = masks[name]
-        return mask ~= nil and raw & mask ~= 0
-    end
     return {
-        cmd = down("deviceLeftCommand") or down("deviceRightCommand") or down("command"),
-        ctrl = down("deviceLeftControl") or down("deviceRightControl"),
-        alt = down("deviceLeftAlternate") or down("deviceRightAlternate"),
-        shift = down("deviceLeftShift") or down("deviceRightShift"),
+        cmd = raw & CMD_MASK ~= 0,
+        ctrl = raw & CTRL_MASK ~= 0,
+        alt = raw & ALT_MASK ~= 0,
+        shift = raw & SHIFT_MASK ~= 0,
     }
 end
+
+local scrollProps = hs.eventtap.event.properties
+local P_LINE_Y, P_LINE_X = scrollProps.scrollWheelEventDeltaAxis1, scrollProps.scrollWheelEventDeltaAxis2
+local P_POINT_Y, P_POINT_X = scrollProps.scrollWheelEventPointDeltaAxis1, scrollProps.scrollWheelEventPointDeltaAxis2
+local P_FIXED_Y, P_FIXED_X = scrollProps.scrollWheelEventFixedPtDeltaAxis1, scrollProps.scrollWheelEventFixedPtDeltaAxis2
+local P_MOMENTUM = scrollProps.scrollWheelEventMomentumPhase
 
 local physMods = { cmd = false, ctrl = false, alt = false, shift = false }
 
@@ -99,34 +111,31 @@ local function getTargetScreenForWindows(windows)
     local mouseScreen = hs.mouse.getCurrentScreen()
     local focusedWin = hs.window.focusedWindow()
     local focusedScreen = focusedWin and focusedWin:screen()
-
-    local function countWindowsOnScreen(scr)
-        if not scr then return 0 end
-        local cnt = 0
-        local scrId = scr:id()
-        for _, w in ipairs(windows) do
-            local ok, s = pcall(function() return w:screen() end)
-            local okStd, isStd = pcall(function() return w:isStandard() end)
-            local okMin, isMin = pcall(function() return w:isMinimized() end)
-            if ok and s and s:id() == scrId and okStd and isStd and okMin and not isMin then
-                cnt = cnt + 1
-            end
+    -- Single pass counts both candidate displays.
+    local mouseId = mouseScreen and mouseScreen:id()
+    local focusedId = focusedScreen and focusedScreen:id()
+    local mouseCount, focusedCount = 0, 0
+    for _, w in ipairs(windows) do
+        local ok, s = pcall(function() return w:screen() end)
+        local okStd, isStd = pcall(function() return w:isStandard() end)
+        local okMin, isMin = pcall(function() return w:isMinimized() end)
+        if ok and s and okStd and isStd and okMin and not isMin then
+            if s:id() == mouseId then mouseCount = mouseCount + 1 end
+            if s:id() == focusedId then focusedCount = focusedCount + 1 end
         end
-        return cnt
     end
-
-    if countWindowsOnScreen(mouseScreen) > 1 then
-        return mouseScreen
-    end
-    if focusedScreen and countWindowsOnScreen(focusedScreen) > 1 then
-        return focusedScreen
-    end
+    if mouseCount > 1 then return mouseScreen end
+    if focusedScreen and focusedCount > 1 then return focusedScreen end
     return mouseScreen or focusedScreen
 end
 
 -- 1. SCROLL WATCHER (Cmd + Scroll & Cmd + Ctrl + Scroll)
 hs_window_cycler.scrollWatcher = hs.eventtap.new({hs.eventtap.event.types.scrollWheel}, function(e)
-    local fromEvent = deviceMods(e:rawFlags())
+    -- Fast path: plain scrolling (no Cmd) is not ours. This callback sees
+    -- every scroll event system-wide, so leave before any heavier work.
+    local rawFlags = e:rawFlags()
+    if CMD_MASK ~= 0 and rawFlags & CMD_MASK == 0 then return false end
+    local fromEvent = deviceMods(rawFlags)
     -- Cmd scroll events also contain a synthetic Ctrl flag (legacy zoom mapping).
     -- Read Ctrl/Alt/Shift from the current physical keyboard state.
     -- Poll physical keyboard state for each scroll. A cached flagsChanged event
@@ -141,25 +150,33 @@ hs_window_cycler.scrollWatcher = hs.eventtap.new({hs.eventtap.event.types.scroll
     }
     local now = hs.timer.secondsSinceEpoch()
 
-    local props = hs.eventtap.event.properties
-    local dy = e:getProperty(props.scrollWheelEventDeltaAxis1) or 0
-    local dx = e:getProperty(props.scrollWheelEventDeltaAxis2) or 0
-    if dy == 0 then dy = e:getProperty(props.scrollWheelEventFixedPtDeltaAxis1) or 0 end
-    if dx == 0 then dx = e:getProperty(props.scrollWheelEventFixedPtDeltaAxis2) or 0 end
-    if dy == 0 then dy = e:getProperty(props.scrollWheelEventPointDeltaAxis1) or 0 end
-    if dx == 0 then dx = e:getProperty(props.scrollWheelEventPointDeltaAxis2) or 0 end
+    local function axis(prop) return e:getProperty(prop) or 0 end
+    local lineY, lineX = axis(P_LINE_Y), axis(P_LINE_X)
+    local pointY, pointX = axis(P_POINT_Y), axis(P_POINT_X)
+    if pointY == 0 then pointY = axis(P_FIXED_Y) end
+    if pointX == 0 then pointX = axis(P_FIXED_X) end
+    local vertical = math.abs(pointY) >= math.abs(pointX)
+    if pointY == 0 and pointX == 0 then vertical = math.abs(lineY) >= math.abs(lineX) end
+    local line, point = vertical and lineY or lineX, vertical and pointY or pointX
+    if line == 0 and point == 0 then return false end
 
-    if dy == 0 and dx == 0 then return false end
-
-    -- CMD + SCROLL -> Switch workspaces on the current display
+    -- CMD + SCROLL -> one desktop per scroll. The wheel emits a burst, and a
+    -- second step is never queued while the first transition is still running.
     if flags.cmd and not (flags.ctrl or flags.alt or flags.shift) then
-        if now - lastSpaceScrollTime < 0.35 then
-            return lastSpaceScrollConsumed
+        -- Gesture state is per display: scrolling on another monitor inside
+        -- the lockout window must still switch that monitor.
+        local screen = hs.mouse.getCurrentScreen()
+        local stateId = screen and screen:id() or 0
+        local state = spaceScrollStates[stateId]
+        if not state then state = {}; spaceScrollStates[stateId] = state end
+        local direction, consume = desktops.scrollGesture(
+            state, now, line, point, axis(P_MOMENTUM))
+        if not consume then return false end
+        if direction and not desktops.isChanging() then
+            lastSpaceScrollConsumed = cycleSpaceOnCurrentScreen(direction, screen) == true
+        elseif direction then
+            lastSpaceScrollConsumed = true
         end
-
-        lastSpaceScrollTime = now
-        local direction = (dy < 0 or dx < 0) and 1 or -1
-        lastSpaceScrollConsumed = cycleSpaceOnCurrentScreen(direction)
         return lastSpaceScrollConsumed
     end
 
@@ -169,14 +186,31 @@ hs_window_cycler.scrollWatcher = hs.eventtap.new({hs.eventtap.event.types.scroll
             return true
         end
 
-        -- One inventory per gesture; reuse it to choose the display and cycle.
-        local rawWindows = omarchy and omarchy.windowFilter:getWindows(hs.window.filter.sortByFocusedLast)
-            or hs.window.orderedWindows()
-        local screen = getTargetScreenForWindows(rawWindows)
-        if not screen then return true end
-        local screenId = screen:id()
+        -- Reuse the session inventory while it is fresh and the pointer or
+        -- focus is still on its display; take a new inventory only to start
+        -- or move a session. getWindows plus per-window AX checks per step
+        -- was the main cost of cycling.
+        local reuse = false
+        if cycleSession.active and (now - cycleSession.lastTime <= 1.5) then
+            local mouseScr = hs.mouse.getCurrentScreen()
+            local focusedWin = hs.window.focusedWindow()
+            local focusedScr = focusedWin and focusedWin:screen()
+            if (mouseScr and mouseScr:id() == cycleSession.screenId)
+                or (focusedScr and focusedScr:id() == cycleSession.screenId) then
+                reuse = true
+            end
+        end
 
-        if not cycleSession.active or (now - cycleSession.lastTime > 1.5) or (cycleSession.screenId ~= screenId) then
+        local rawWindows, screenId
+        if not reuse then
+            rawWindows = omarchy and omarchy.windowFilter:getWindows(hs.window.filter.sortByFocusedLast)
+                or hs.window.orderedWindows()
+            local screen = getTargetScreenForWindows(rawWindows)
+            if not screen then return true end
+            screenId = screen:id()
+        end
+
+        if not reuse and (not cycleSession.active or (now - cycleSession.lastTime > 1.5) or (cycleSession.screenId ~= screenId)) then
             local screenWindows = {}
             for _, w in ipairs(rawWindows) do
                 local ok, s = pcall(function() return w:screen() end)
@@ -209,7 +243,8 @@ hs_window_cycler.scrollWatcher = hs.eventtap.new({hs.eventtap.event.types.scroll
         local count = #cycleSession.windows
 
         if count > 1 then
-            if dy > 0 or dx > 0 then
+            local delta = line ~= 0 and line or point
+            if delta > 0 then
                 cycleSession.index = cycleSession.index - 1
                 if cycleSession.index < 1 then
                     cycleSession.index = count
@@ -223,7 +258,10 @@ hs_window_cycler.scrollWatcher = hs.eventtap.new({hs.eventtap.event.types.scroll
 
             local targetWin = cycleSession.windows[cycleSession.index]
             if targetWin then
-                hs.timer.doAfter(0.001, function()
+                -- Coalesce rapid steps: only the latest target gets focused.
+                if cycleSession.focusTimer then cycleSession.focusTimer:stop() end
+                cycleSession.focusTimer = hs.timer.doAfter(0.001, function()
+                    cycleSession.focusTimer = nil
                     pcall(function() targetWin:focus() end)
                 end)
             end
@@ -304,6 +342,17 @@ local function saveHistory(hist)
     pcall(function() hs.json.write(hist, historyFile, true, true) end)
 end
 
+-- Rewriting the whole JSON on every copy stalls the main thread during
+-- bursts; coalesce writes within half a second.
+local saveTimer
+local function scheduleSave()
+    if saveTimer then saveTimer:stop() end
+    saveTimer = hs.timer.doAfter(0.5, function()
+        saveTimer = nil
+        saveHistory(hs_clipboard.history)
+    end)
+end
+
 hs_clipboard.history = loadHistory()
 local lastChangeCount = hs.pasteboard.changeCount()
 
@@ -329,7 +378,7 @@ local function addClip(text)
         table.remove(hs_clipboard.history)
     end
 
-    saveHistory(hs_clipboard.history)
+    scheduleSave()
 end
 
 hs_clipboard.watcher = hs.timer.doEvery(0.4, function()

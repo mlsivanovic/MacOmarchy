@@ -53,10 +53,18 @@ local function rects(frame,n,layout,ratio)
 end
 
 -- One pending pass merges bursts without indefinitely postponing work.
+-- An earlier request expedites the pending pass; a later one does not
+-- postpone it.
 function E.schedule(delay)
-    if E.pending then return end
-    E.pending=hs.timer.doAfter(delay or 0.04,function()
-        E.pending=nil
+    delay=delay or 0.04
+    local due=hs.timer.secondsSinceEpoch()+delay
+    if E.pending then
+        if E.pendingDue and E.pendingDue<=due then return end
+        E.pending:stop();E.pending=nil
+    end
+    E.pendingDue=due
+    E.pending=hs.timer.doAfter(delay,function()
+        E.pending=nil;E.pendingDue=nil
         E.reflow()
     end)
 end
@@ -390,7 +398,7 @@ E.commands={
     ["shift:up"]=function() E.moveMonitor(-1) end,["shift:down"]=function() E.moveMonitor(1) end,
 }
 -- Events drive normal work; this slower scan recovers missed notifications.
-E.timer=hs.timer.doEvery(2,function()
+E.timer=hs.timer.doEvery(5,function()
     E.windowSource=nil
     E.reflow()
     E.windowSource=E.cachedWindowSource

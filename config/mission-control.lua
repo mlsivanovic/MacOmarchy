@@ -13,13 +13,25 @@ local function displays()
     end
     return out
 end
+-- Toggling is the only close primitive on macOS 27, and the AX tree stays
+-- visible during the close animation. Remember a close we started so a
+-- repeated close inside that window cannot toggle Mission Control back open.
+local closingSince=nil
+local function nowSeconds()
+    if hs.timer and hs.timer.secondsSinceEpoch then return hs.timer.secondsSinceEpoch() end
+    return os.time()
+end
 function C.open()
     if not modern then hs.spaces.openMissionControl();return end
-    if #displays()==0 then hs.spaces.toggleMissionControl() end
+    if #displays()==0 then closingSince=nil;hs.spaces.toggleMissionControl() end
 end
 function C.close()
     if not modern then hs.spaces.closeMissionControl();return end
-    if #displays()>0 then hs.spaces.toggleMissionControl() end
+    if #displays()==0 then closingSince=nil;return end
+    local now=nowSeconds()
+    if closingSince and now-closingSince<1 then return end
+    closingSince=now
+    hs.spaces.toggleMissionControl()
 end
 function C.add(screen)
     if not modern then return hs.spaces.addSpaceToScreen(screen,false) end

@@ -139,4 +139,63 @@ left.active=10;focused=nil;pointer={x=1200,y=200}
 local count=#posted
 D.goToNumber(2,left);left.active=12;advance(0.2)
 assert(#posted==count and not D.keyTimer,'completion cancels delayed stale shortcut')
+
+local gesture={}
+local function gestureSteps(samples)
+    local steps={}
+    for _,s in ipairs(samples) do
+        local direction=D.scrollGesture(gesture,s[1],s[2],s[3],s[4])
+        if direction then steps[#steps+1]=direction end
+    end
+    return steps
+end
+gesture={}
+local burst=gestureSteps({{0,-1,0,0},{0.2,-1,0,0},{0.4,0,-4,0},{0.9,-1,0,0}})
+assert(#burst==1 and burst[1]==1,'events inside one second stay on one desktop')
+gesture={}
+local notches=gestureSteps({{0,-1,0,0},{1.05,-1,0,0}})
+assert(#notches==2 and notches[2]==1,'a one-second gap starts the next desktop')
+gesture={}
+local momentum=gestureSteps({{0,-1,0,0},{0.5,0,-8,1}})
+assert(#momentum==1,'momentum after a notch does not advance again')
+gesture={}
+local noise=D.scrollGesture(gesture,0,0,0.2,0)
+assert(noise==nil and gesture.last==nil,'sub-pixel noise does not start a desktop change')
+-- The lockout window is anchored at the accepted event, not extended by
+-- later ones: a continuous scroll advances again after one second.
+gesture={}
+local continuous=gestureSteps({{0,-1,0,0},{0.5,-1,0,0},{0.9,-1,0,0},{1.05,-1,0,0}})
+assert(#continuous==2,'continuous scroll advances again once the anchored second elapses')
+-- Sub-point fragments accumulate until they cross the threshold.
+gesture={}
+local slow=gestureSteps({{0,0,0.4,0},{0.1,0,0.4,0},{0.2,0,0.4,0}})
+assert(#slow==1 and slow[1]==-1,'slow sub-point scroll accumulates into one desktop change')
+-- Pointer already on the focused display: no warp to the centre at all.
+left.active=10;focused=w;pointer={x=100,y=200}
+assert(D.goToNumber(2,left))
+assert(pointer.x==100 and pointer.y==200,'pointer stays put when already on the focused display')
+drain();assert(left.active==12,'unwarped switch still reaches the target')
+-- A replaced queued request is completed with failure, not dropped.
+left.active=10
+local us=D.userSpaces(left)
+local replacedResult,replacedCalled=nil,false
+assert(D.goToID(left,us[2]))
+assert(D.goToID(left,us[3],function(ok) replacedCalled=true;replacedResult=ok end))
+assert(D.goToID(left,us[4],function() end))
+assert(replacedCalled and replacedResult==false,'replaced queued completion is notified')
+drain();assert(left.active==us[4] and not D.queued,'latest queued target still wins after replacement')
+-- Parallel creations serialize: the second call queues instead of
+-- overwriting the shared creation timer, and runs after the first batch.
+creationWorks=true
+local additionsBefore2,closedBefore=additions,closedMC
+local gotA,gotB=nil,nil
+assert(D.ensureNumber(6,left,function(id) gotA=id end))
+local firstTimer=D.creationTimer
+assert(firstTimer,'first creation owns the creation timer')
+assert(D.ensureNumber(7,left,function(id) gotB=id end))
+assert(D.creationTimer==firstTimer,'queued creation does not overwrite the creation timer')
+drain()
+assert(gotA==D.userSpaces(left)[6] and gotB==D.userSpaces(left)[7],'both queued creations complete in order')
+assert(additions==additionsBefore2+2 and closedMC==closedBefore+2,'each creation batch closes Mission Control once')
+assert(not D.creating,'creation lock released after the queue drains')
 print('PASS: desktop navigation, transfers, creation, queueing and timing')

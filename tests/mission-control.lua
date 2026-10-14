@@ -13,12 +13,15 @@ local function display(x,id)
 end
 local root=element({})
 function root:attributeValue(k) if k=='AXChildren' then return children end end
+local mockNow,holdTree=0,false
 hs={
     host={operatingSystemVersion=function() return {major=27} end},
     application={applicationsForBundleID=function(name) assert(name=='com.apple.WindowManager');return {'manager'} end},
     axuielement={applicationElement=function(app) assert(app=='manager');return root end},
+    timer={secondsSinceEpoch=function() return mockNow end},
     spaces={toggleMissionControl=function()
         toggles=toggles+1
+        if holdTree then return end
         children=#children==0 and {display(0,31),display(1000,32)} or {}
     end}
 }
@@ -32,4 +35,14 @@ local ok,err=C.add(bad);assert(not ok and err=='pending' and #pressed==1,'never 
 C.close();assert(toggles==2 and #children==0,'close active Mission Control')
 C.close();assert(toggles==2,'closed tree does not get toggled open by close')
 C.open();assert(toggles==3,'fresh read after closure, no stale element cache')
+-- While the close animation still exposes the AX tree, a repeated close
+-- must not toggle Mission Control back open.
+holdTree=true
+local togglesBefore=toggles
+C.close();assert(toggles==togglesBefore+1,'first close starts the toggle')
+C.close();assert(toggles==togglesBefore+1,'repeated close during animation is ignored')
+holdTree=false;children={}
+C.close();assert(toggles==togglesBefore+1,'close with an empty tree does nothing')
+children={display(0,31),display(1000,32)};mockNow=mockNow+2
+C.close();assert(toggles==togglesBefore+2 and #children==0,'close works again after the guard window')
 print('PASS: 7 Mission Control behaviors')

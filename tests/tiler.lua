@@ -161,4 +161,9 @@ os.remove(path);os.remove(dir)
 E._excludesFile=nil
 local listed=E.excludedApps()
 assert(listed[1].builtin==false and listed[#listed].builtin==true,'user excludes sort before built-ins')
+-- An earlier schedule expedites a pending later pass instead of being merged away.
+advance(0.3)
+local scansBefore=scans
+E.schedule(0.2);E.schedule();advance(0.05)
+assert(scans==scansBefore+1,'earlier schedule expedites the pending reflow')
 print('PASS: tiling lifecycle, ordering, scheduling and constrained geometry')

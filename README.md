@@ -48,10 +48,11 @@ creates desktops 3, 4 and 5. Creation briefly opens native Mission Control.
 Desktop creation, window membership and the final active desktop are verified.
 
 Desktop numbers are local to each display and skip fullscreen Spaces. Navigation
-alone does not create desktops. Rapid navigation keeps the latest requested destination;
-scroll steps accumulate from the intended destination while a transition is running. Moving affects the active window rather than all
-windows of its application. A failed creation or move stops the operation and
-shows a notification.
+alone does not create desktops. Rapid keyboard navigation keeps the latest requested
+destination. Cmd+scroll moves one desktop; further scroll events are ignored for one
+second, and a second desktop is not queued while that transition is still running.
+Moving affects the active window rather than all windows of its application. A failed
+creation or move stops the operation and shows a notification.
 
 Cmd+Shift+3/4/5 are reserved for moving windows. Screenshots and recording remain
 available through the command menu or the macOS Screenshot app.
@@ -65,7 +66,7 @@ available through the command menu or the macOS Screenshot app.
 - A window dragged to another display joins its active desktop and tiles with its windows.
 - Tiling pauses while the left mouse button is held and resumes when dragging finishes.
 - Window creation, closure, visibility and geometry events schedule tiling after a
-  40 ms coalescing window. A 2-second fallback scan covers missed notifications.
+  40 ms coalescing window. A 5-second fallback scan covers missed notifications.
 - Tiling waits for desktop transfers and a short settling period after Space changes.
 - Returning to a desktop preserves its window order and main pane.
 - Windows that reject a requested size receive at most two attempts for an unchanged
