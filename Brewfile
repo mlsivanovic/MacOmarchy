@@ -1,3 +1,5 @@
 cask "ghostty"
 cask "hammerspoon"
+cask "macshot"
+cask "monitorcontrol"
 cask "font-jetbrains-mono-nerd-font"
