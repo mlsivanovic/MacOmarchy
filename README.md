@@ -103,10 +103,30 @@ Font Mono. Ghostty and Hammerspoon start at login using local LaunchAgents.
 
 ## Files and setup
 
-This repository contains configuration files, not a complete automatic installer.
-Back up existing settings before copying files and merge editor appearance settings
-into your existing configuration. Install dependencies from the Brewfile, then
-configure Hammerspoon's Accessibility permission through macOS System Settings.
+Install or re-apply everything with the idempotent installer, and update an
+existing checkout with the updater:
+
+```sh
+./install.sh            # first install or re-apply (safe to re-run)
+./install.sh --dry-run  # print planned writes, change nothing
+./update.sh             # git pull --ff-only, then re-run install.sh --update
+```
+
+The installer checks prerequisites (Homebrew, `git`, `python3`, Xcode Command
+Line Tools), backs up existing targets (see Backups and rollback), runs
+`brew bundle`, copies the managed files below, merges only the appearance keys
+from `config/editor-appearance.json` into existing Zed/VS Code settings,
+builds the native module with `bin/build-space-move` (requires Apple's
+command-line developer tools and Hammerspoon in `/Applications`), applies the
+Dock/Spaces and symbolic-hotkey settings described above, loads both
+LaunchAgents, and reloads Hammerspoon. Hammerspoon's Accessibility permission
+cannot be granted by script: the installer opens the System Settings pane and,
+in an interactive terminal, waits for you to grant it. Useful flags:
+`--yes` (non-interactive; a diverged Ghostty config is kept local and the repo
+version is saved as `config.ghostty.repo` next to it), `--skip-brew`,
+`--skip-system`, and `--skip-launchagents`. To do it manually instead, back up
+existing settings, copy the files below yourself, and merge the editor
+appearance settings into your existing configuration.
 
 | Source | Active location / purpose |
 |---|---|
@@ -136,13 +156,23 @@ lua tests/omarchy.lua
 
 ## Backups and rollback
 
-Local backup locations are kept outside Git in `backup-location.txt` and
-`~/.config/mac-omarchy/backups/`. Clipboard history is not included in this repository.
+Every `install.sh`/`update.sh` run first backs up the files it may replace to
+`~/.config/mac-omarchy/backups/<timestamp>-install` (or `-update`), mirroring
+their paths under `home/` and exporting the Dock and symbolic-hotkey plists
+under `plists/`; the latest path is recorded in the gitignored
+`backup-location.txt`. Local state is never overwritten or backed up as a
+replacement target: `~/.hammerspoon/clipboard_history.json` and
+`~/.config/mac-omarchy/tiling-excludes.json` are untouched. Clipboard history
+is not included in this repository.
 
-Restore your backed-up Hammerspoon configuration to `~/.hammerspoon/init.lua`, then
-reload it. Restore editor settings and your previous system appearance/wallpaper
-as needed. Move the LaunchAgent files out of `~/Library/LaunchAgents` and log out
-to remove their login startup behavior. Existing applications are retained.
+To roll back, copy the files from the backup's `home/` tree back over `$HOME`
+(or restore the Hammerspoon configuration to `~/.hammerspoon/init.lua` and
+reload it), restore the exported plists with `defaults import com.apple.dock
+<backup>/plists/com.apple.dock.plist` and likewise for
+`com.apple.symbolichotkeys`, and restore editor settings and your previous
+system appearance/wallpaper as needed. Move the LaunchAgent files out of
+`~/Library/LaunchAgents` and log out to remove their login startup behavior.
+Existing applications are retained.
 The disabled Amethyst LaunchAgent is stored locally at
 `~/.config/mac-omarchy/local.mac-omarchy.amethyst.disabled.plist`.
 
