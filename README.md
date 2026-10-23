@@ -30,7 +30,7 @@ and the default screenshot shortcuts.
 | Ctrl + Option + Shift + ↑ / ↓ | Move to the previous / next display |
 | Ctrl + Option + M | Swap with the main window |
 | Ctrl + Option + − / = | Shrink / expand the main pane |
-| Cmd + 1–9 | Switch desktop on the focused window's display |
+| Cmd + 1–9 | Switch desktop on the display under the pointer |
 | Cmd + Shift + 1–9 | Move the window to a desktop on the same display and follow it |
 | Cmd + scroll | Cycle desktops on the display under the pointer |
 | Cmd + middle click | Mission Control |
@@ -47,7 +47,9 @@ up to that number is created. Moving from a display with two desktops to Desktop
 creates desktops 3, 4 and 5. Creation briefly opens native Mission Control.
 Desktop creation, window membership and the final active desktop are verified.
 
-Desktop numbers are local to each display and skip fullscreen Spaces. Navigation
+Desktop numbers are local to each display and skip fullscreen Spaces. Desktop
+navigation (Cmd+number and Cmd+scroll) targets the display under the pointer,
+regardless of which display holds the focused window. Navigation
 alone does not create desktops. Rapid keyboard navigation keeps the latest requested
 destination. Cmd+scroll moves one desktop; further scroll events are ignored for one
 second, and a second desktop is not queued while that transition is still running.

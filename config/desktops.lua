@@ -43,9 +43,11 @@ function D.userSpaces(screen)
     return out
 end
 
-function D.keyboardScreen()
-    local window = hs.window.focusedWindow()
-    return (window and window:screen()) or hs.mouse.getCurrentScreen() or hs.screen.mainScreen()
+-- Desktop navigation always targets the display under the pointer, never
+-- the focused window's display: the pointer may be on another monitor
+-- without having clicked (focused) anything there.
+function D.pointerScreen()
+    return hs.mouse.getCurrentScreen() or hs.screen.mainScreen()
 end
 
 local function nativeShortcut(direction, preferences)
@@ -193,7 +195,7 @@ function D.goToID(screen, target, completion, transferOwner)
 end
 
 function D.goToNumber(number, screen)
-    screen = screen or D.keyboardScreen()
+    screen = screen or D.pointerScreen()
     local target = D.userSpaces(screen)[number]
     if not target then hs.alert.show("This display does not have Desktop " .. number); return false end
     return D.goToID(screen, target)
@@ -221,7 +223,7 @@ function D.scrollGesture(state, now, line, point, momentum)
 end
 
 function D.cycle(direction, screen)
-    screen = screen or hs.mouse.getCurrentScreen()
+    screen = screen or D.pointerScreen()
     local list = D.userSpaces(screen)
     if #list < 2 then return false end
     local index = 1

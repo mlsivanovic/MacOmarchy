@@ -69,12 +69,14 @@ hs={
 }
 package.loaded['mission-control']={open=function() end,close=hs.spaces.closeMissionControl,add=function(s) return hs.spaces.addSpaceToScreen(s,false) end}
 local D=dofile('config/desktops.lua');package.loadlib=originalLoadlib
-assert(D.keyboardScreen()==left,'keyboard follows focused window, not pointer')
+assert(D.pointerScreen()==right,'desktop navigation follows pointer, not focused window')
 local list=D.userSpaces(left);assert(#list==2 and list[2]==12,'local numbering excludes fullscreen Space')
 assert(D.goToNumber(2));drain()
-assert(left.active==12 and right.active==20,'only selected monitor changes, across fullscreen Space')
+assert(left.active==10 and right.active==21,'Cmd+number changes only the pointer monitor, not the focused monitor')
 assert(posted[1].flags==11534336,'native customized modifier flags preserved')
 assert(pointer.x==1200 and pointer.y==200,'pointer restored after switching')
+assert(D.cycle(-1));drain();assert(right.active==20 and left.active==10,'Cmd+scroll changes only the pointer monitor')
+assert(D.goToNumber(2,left));drain();assert(left.active==12 and right.active==20,'explicit screen still switches its own monitor, across fullscreen Space')
 assert(not D.goToNumber(3,left) and #alerts==1,'nonexistent local number rejected')
 assert(D.cycle(1,left));drain();assert(left.active==10,'scroll wraps existing user desktops')
 assert(D.moveWindow(2));drain()
@@ -95,7 +97,7 @@ moveWorks=false;w.space=10
 local result
 D.moveToSpace(w,12,function(ok) result=ok end);drain()
 assert(result==false and #alerts==3,'verify actual membership and report silent API failure')
-focused=nil;assert(D.keyboardScreen()==right,'empty desktop falls back to pointer monitor')
+focused=nil;assert(D.pointerScreen()==right,'pointer monitor is used even with no focused window')
 focused=w;moveWorks=true;creationWorks=true
 left.active=10;w.space=10
 assert(D.goToNumber(2,left))

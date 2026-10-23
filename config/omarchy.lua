@@ -165,7 +165,7 @@ add("App — exclude from tiling", "Ctrl + Option + X · this app stays floating
 end, mod, "x")
 add("Tiling — manage excluded apps", "Add or remove apps that stay floating", function() M.manageExcludes() end)
 for i = 1, 9 do
-    add("Desktop — " .. i .. " on the current display", "Cmd + " .. i,
+    add("Desktop — " .. i .. " on the display under the pointer", "Cmd + " .. i,
         function() M.desktops.goToNumber(i) end, launchMod, tostring(i))
     add("Window — move to Desktop " .. i .. " on this display", "Cmd + Shift + " .. i .. " · create if missing, then follow the window",
         function() M.desktops.moveWindow(i) end, launchShift, tostring(i))
