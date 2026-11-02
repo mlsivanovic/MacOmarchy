@@ -3,7 +3,7 @@
 -- 1. Workspace Switcher: Cmd + Scroll (switch Spaces on the current display)
 -- 2. Workspace Overview: Cmd + Middle Click (open Mission Control overview)
 -- 3. Window Cycler:      Cmd + Ctrl + Scroll (cycle windows on the display)
--- 4. Clipboard Manager:  Cmd + Ctrl + V (searchable 100-item history)
+-- 4. Clipboard Manager:  Ctrl + V (searchable 100-item text and image history)
 -- ============================================================================
 
 local spaces = require("hs.spaces")
@@ -322,118 +322,18 @@ end)
 
 
 -- ----------------------------------------------------------------------------
--- SECTION 3: CLIPBOARD MANAGER (Cmd + Ctrl + V)
+-- SECTION 3: CLIPBOARD MANAGER (Ctrl + V)
 -- ----------------------------------------------------------------------------
-hs_clipboard = hs_clipboard or {}
-
-if hs_clipboard.watcher then pcall(function() hs_clipboard.watcher:stop() end) end
-if hs_clipboard.hotkey then pcall(function() hs_clipboard.hotkey:delete() end) end
-
-local MAX_HISTORY = 100
-local historyFile = os.getenv("HOME") .. "/.hammerspoon/clipboard_history.json"
-
-local function loadHistory()
-    local ok, data = pcall(function() return hs.json.read(historyFile) end)
-    if ok and type(data) == "table" then return data end
-    return {}
+-- A clipboard failure must not stop tiling. Image files live beside the history JSON.
+local clipboardOk, clipboardOrErr = pcall(require, "clipboard")
+if not clipboardOk then
+    hs.alert.show("Clipboard history failed to load")
+else
+    local started, startErr = pcall(clipboardOrErr.start)
+    if not started then
+        hs.alert.show("Clipboard history: " .. tostring(startErr):gsub("%s+", " "):sub(1, 120))
+    end
 end
-
-local function saveHistory(hist)
-    pcall(function() hs.json.write(hist, historyFile, true, true) end)
-end
-
--- Rewriting the whole JSON on every copy stalls the main thread during
--- bursts; coalesce writes within half a second.
-local saveTimer
-local function scheduleSave()
-    if saveTimer then saveTimer:stop() end
-    saveTimer = hs.timer.doAfter(0.5, function()
-        saveTimer = nil
-        saveHistory(hs_clipboard.history)
-    end)
-end
-
-hs_clipboard.history = loadHistory()
-local lastChangeCount = hs.pasteboard.changeCount()
-
-local initialClip = hs.pasteboard.getContents()
-if #hs_clipboard.history == 0 and initialClip and initialClip ~= "" then
-    table.insert(hs_clipboard.history, initialClip)
-    saveHistory(hs_clipboard.history)
-end
-
-local function addClip(text)
-    if not text or text == "" or type(text) ~= "string" then return end
-
-    for i, item in ipairs(hs_clipboard.history) do
-        if item == text then
-            table.remove(hs_clipboard.history, i)
-            break
-        end
-    end
-
-    table.insert(hs_clipboard.history, 1, text)
-
-    while #hs_clipboard.history > MAX_HISTORY do
-        table.remove(hs_clipboard.history)
-    end
-
-    scheduleSave()
-end
-
-hs_clipboard.watcher = hs.timer.doEvery(0.4, function()
-    local currentCount = hs.pasteboard.changeCount()
-    if currentCount ~= lastChangeCount then
-        lastChangeCount = currentCount
-        local text = hs.pasteboard.getContents()
-        if text and text ~= "" and text ~= hs_clipboard.history[1] then
-            addClip(text)
-        end
-    end
-end)
-
-hs_clipboard.chooser = hs.chooser.new(function(choice)
-    if choice and choice.fullText then
-        lastChangeCount = hs.pasteboard.changeCount()
-        hs.pasteboard.setContents(choice.fullText)
-        lastChangeCount = hs.pasteboard.changeCount()
-
-        addClip(choice.fullText)
-
-        hs.timer.doAfter(0.12, function()
-            hs.eventtap.keyStroke({"cmd"}, "v")
-        end)
-    end
-end)
-
-hs_clipboard.chooser:searchSubText(true)
-hs_clipboard.chooser:rows(9)
-hs_clipboard.chooser:placeholderText("Search history (type to filter 100 items)...")
-
-hs_clipboard.hotkey = hs.hotkey.bind({"cmd", "ctrl"}, "v", function()
-    if #hs_clipboard.history == 0 then
-        hs.alert.show("Clipboard history is empty")
-        return
-    end
-
-    local choices = {}
-    for i, item in ipairs(hs_clipboard.history) do
-        local firstLine = item:match("([^\r\n]+)") or item
-        if #firstLine > 75 then firstLine = firstLine:sub(1, 75) .. "…" end
-
-        local preview = item:gsub("[\r\n\t]+", " ")
-        if #preview > 110 then preview = preview:sub(1, 110) .. "…" end
-
-        table.insert(choices, {
-            text = firstLine,
-            subText = string.format("#%d (%d characters) • %s", i, #item, preview),
-            fullText = item
-        })
-    end
-
-    hs_clipboard.chooser:choices(choices)
-    hs_clipboard.chooser:show()
-end)
 
 -- ============================================================================
 omarchy = require("omarchy")

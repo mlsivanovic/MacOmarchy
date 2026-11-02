@@ -35,7 +35,7 @@ and the default screenshot shortcuts.
 | Cmd + scroll | Cycle desktops on the display under the pointer |
 | Cmd + middle click | Mission Control |
 | Cmd + Ctrl + scroll | Cycle windows on a display |
-| Cmd + Ctrl + V | Clipboard history |
+| Ctrl + V | Clipboard history (text and images) |
 | F12 | Ghostty quick terminal |
 | Cmd + Space | Native Spotlight |
 | Cmd + W | Native window / tab closing |
@@ -58,6 +58,13 @@ creation or move stops the operation and shows a notification.
 
 Cmd+Shift+3/4/5 are reserved for moving windows. Screenshots and recording remain
 available through the command menu or the macOS Screenshot app.
+
+Clipboard history keeps the last 100 items. A copied picture (screenshot, Copy
+Image, or an image file) is stored as an image and pasted back as an image. Text
+stays text, including a sentence that only has a TIFF preview attached. Image
+files live in `~/.hammerspoon/clipboard-images/` and are deleted when they drop
+out of the history. An image larger than 32 MB stays on the system clipboard
+and is not archived.
 
 ## Automatic tiling
 
@@ -134,7 +141,7 @@ appearance settings into your existing configuration.
 | Source | Active location / purpose |
 |---|---|
 | config/hammerspoon/init.lua | ~/.hammerspoon/init.lua |
-| config/omarchy.lua, desktops.lua, tiler.lua, mission-control.lua | ~/.hammerspoon/ |
+| config/omarchy.lua, desktops.lua, tiler.lua, mission-control.lua, clipboard.lua | ~/.hammerspoon/ |
 | config/hammerspoon/space-move.m | Source for the local native module |
 | bin/build-space-move | Builds ~/.hammerspoon/bin/space-move.so |
 | config/ghostty.config | ~/.config/ghostty/config.ghostty |
@@ -155,6 +162,7 @@ lua tests/tiler.lua
 lua tests/desktops.lua
 lua tests/mission-control.lua
 lua tests/omarchy.lua
+lua tests/clipboard.lua
 ```
 
 ## Backups and rollback
@@ -164,9 +172,13 @@ Every `install.sh`/`update.sh` run first backs up the files it may replace to
 their paths under `home/` and exporting the Dock and symbolic-hotkey plists
 under `plists/`; the latest path is recorded in the gitignored
 `backup-location.txt`. Local state is never overwritten or backed up as a
-replacement target: `~/.hammerspoon/clipboard_history.json` and
+replacement target: `~/.hammerspoon/clipboard_history.json`,
+`~/.hammerspoon/clipboard-images/`, and
 `~/.config/mac-omarchy/tiling-excludes.json` are untouched. Clipboard history
-is not included in this repository.
+is not included in this repository. Image records in the history file point at
+files in `clipboard-images/`. A rollback to a text-only clipboard build leaves
+those records in place; remove them from the history file if that build errors
+on launch.
 
 To roll back, copy the files from the backup's `home/` tree back over `$HOME`
 (or restore the Hammerspoon configuration to `~/.hammerspoon/init.lua` and
