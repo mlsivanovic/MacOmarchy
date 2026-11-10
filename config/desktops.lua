@@ -2,31 +2,48 @@
 -- Native shortcuts may be customized: read their actual keycodes and full flags.
 local D = { busy = false, moves = {} }
 local missionControl=require("mission-control")
+local S=require("settings")
 local mouseOrigin, placedMouse
 local drainNavigation
 function D.settle()
-    D.settleUntil=hs.timer.secondsSinceEpoch()+0.15
+    D.settleUntil=hs.timer.secondsSinceEpoch()+S.get("desktops.settleDelay")
 end
 function D.isChanging()
     return D.busy or D.transfer or next(D.moves)~=nil
         or hs.timer.secondsSinceEpoch()<(D.settleUntil or 0)
 end
-local loader = package.loadlib(os.getenv("HOME") .. "/.hammerspoon/bin/space-move.so", "luaopen_space_move")
-local bridgedMove = loader and loader()
+-- The native bridge is optional: a stale .so after a Hammerspoon or macOS
+-- update must degrade to the public API, never abort the whole config.
+local function loadBridge()
+    local home = os.getenv("HOME")
+    if not home or home == "" then return nil end
+    local loaded, loader = pcall(package.loadlib, home .. "/.hammerspoon/bin/space-move.so", "luaopen_space_move")
+    if not loaded or type(loader) ~= "function" then return nil end
+    local ok, bridged = pcall(loader)
+    if not ok or type(bridged) ~= "function" then return nil end
+    return bridged
+end
+local bridgedMove = loadBridge()
 function D.moveToSpace(window, target, callback)
     local id = type(window)=="number" and window or window:id()
     if D.moves[id] then D.moves[id]:stop();D.moves[id]=nil end
-    local started = bridgedMove and bridgedMove(id,target)
+    local started=false
+    if bridgedMove then
+        local ok, result=pcall(bridgedMove,id,target)
+        started=ok and result==true
+    end
     if not started then started=hs.spaces.moveWindowToSpace(id,target) end
     if not started then if callback then callback(false) end;return false end
     local checks,timer=0,nil
-    timer=hs.timer.doEvery(0.1,function()
+    local checkInterval=S.get("desktops.checkInterval")
+    local checksLimit=math.max(1,math.ceil(S.get("desktops.transitionTimeout")/checkInterval))
+    timer=hs.timer.doEvery(checkInterval,function()
         checks=checks+1
         local done=false
         for _,space in ipairs(hs.spaces.windowSpaces(id) or {}) do if space==target then done=true end end
-        if done or checks>=20 then
+        if done or checks>=checksLimit then
             timer:stop();D.moves[id]=nil
-            if not done then hs.alert.show("macOS did not move the window to the selected desktop.") end
+            if not done then S.alert("macOS did not move the window to the selected desktop.") end
             if callback then callback(done) end
         end
     end)
@@ -100,7 +117,7 @@ local function finish(errorMessage)
         end
     end
     mouseOrigin, placedMouse = nil, nil
-    if errorMessage then hs.alert.show(errorMessage) end
+    if errorMessage then S.alert(errorMessage) end
     if D.afterChange then D.afterChange() end
     if errorMessage and D.queued then
         local queued=D.queued;D.queued=nil
@@ -178,18 +195,18 @@ function D.goToID(screen, target, completion, transferOwner)
         if not shortcut then finish("Enable Move left/right a space in macOS Keyboard → Mission Control."); return end
         local changedFocus=focusScreen(screen)
         pendingSpace = all[currentIndex+delta]
-        deadline = hs.timer.secondsSinceEpoch()+2
+        deadline = hs.timer.secondsSinceEpoch()+S.get("desktops.transitionTimeout")
         attempts = attempts+1
         -- Fn/numeric-pad flags are part of the saved native arrow shortcut.
         -- keyStroke only sends the named modifiers and can fail to match it.
-        D.keyTimer=hs.timer.doAfter(changedFocus and 0.15 or 0,function()
+        D.keyTimer=hs.timer.doAfter(changedFocus and S.get("desktops.focusDelay") or 0,function()
             D.keyTimer=nil
             if not D.busy then return end
             hs.eventtap.event.newKeyEvent({},shortcut.keycode,true):rawFlags(shortcut.flags):post()
             hs.eventtap.event.newKeyEvent({},shortcut.keycode,false):rawFlags(shortcut.flags):post()
         end)
     end
-    D.timer = hs.timer.doEvery(0.04, step)
+    D.timer = hs.timer.doEvery(S.get("desktops.pollInterval"), step)
     step()
     return true
 end
@@ -197,7 +214,7 @@ end
 function D.goToNumber(number, screen)
     screen = screen or D.pointerScreen()
     local target = D.userSpaces(screen)[number]
-    if not target then hs.alert.show("This display does not have Desktop " .. number); return false end
+    if not target then S.alert("This display does not have Desktop " .. number); return false end
     return D.goToID(screen, target)
 end
 
@@ -211,7 +228,7 @@ function D.scrollGesture(state, now, line, point, momentum)
     line, point, momentum = line or 0, point or 0, momentum or 0
     if momentum ~= 0 then return nil, true end
     if line == 0 and point == 0 then return nil, false end
-    if state.last and now - state.last < 1 then return nil, true end
+    if state.last and now - state.last < S.get("desktops.scrollLock") then return nil, true end
     if line == 0 then
         state.acc = (state.acc or 0) + point
         if math.abs(state.acc) < 1 then return nil, true end
@@ -237,8 +254,9 @@ end
 -- Create missing local user desktops in order, verify each addition before
 -- requesting another, and close Mission Control once for the whole batch.
 function D.ensureNumber(number, screen, callback)
-    if type(number)~="number" or number%1~=0 or number<1 or number>9 then
-        callback(nil,"The desktop number must be 1–9.");return false
+    local maxNumber=S.get("desktops.maxNumber")
+    if type(number)~="number" or number%1~=0 or number<1 or number>maxNumber then
+        callback(nil,"The desktop number must be 1–"..maxNumber..".");return false
     end
     local target=D.userSpaces(screen)[number]
     if target then callback(target);return true end
@@ -251,7 +269,7 @@ function D.ensureNumber(number, screen, callback)
     end
     D.creating=true
     local pendingCount,deadline=nil,0
-    local readyDeadline=hs.timer.secondsSinceEpoch()+3
+    local readyDeadline=hs.timer.secondsSinceEpoch()+S.get("desktops.creationTimeout")
     local completed=false
     local function complete(id,errorMessage)
         if completed then return end
@@ -287,19 +305,19 @@ function D.ensureNumber(number, screen, callback)
         end
         if not called or not ok then complete(nil,tostring(err or ok or "The desktop was not created."));return end
         pendingCount=#list
-        deadline=hs.timer.secondsSinceEpoch()+3
+        deadline=hs.timer.secondsSinceEpoch()+S.get("desktops.creationTimeout")
         readyDeadline=deadline
     end
-    D.creationTimer=hs.timer.doEvery(0.1,step)
+    D.creationTimer=hs.timer.doEvery(S.get("desktops.checkInterval"), step)
     step()
     return true
 end
 
 function D.moveWindow(number)
-    if D.busy or D.transfer then hs.alert.show("Wait for the desktop transition to finish.");return false end
+    if D.busy or D.transfer then S.alert("Wait for the desktop transition to finish.");return false end
     local window = hs.window.focusedWindow()
     if not window or not window:isStandard() or window:isFullScreen() then
-        hs.alert.show("Select a standard window to move."); return false
+        S.alert("Select a standard window to move."); return false
     end
     local screen = window:screen()
     D.transfer=true
@@ -312,7 +330,7 @@ function D.moveWindow(number)
     end
     return D.ensureNumber(number,screen,function(target,errorMessage)
         if not target then
-            hs.alert.show(errorMessage);done(false);return
+            S.alert(errorMessage);done(false);return
         end
         if hs.spaces.activeSpaceOnScreen(screen)==target then done(true);return end
         local started=D.moveToSpace(window,target,function(moved)

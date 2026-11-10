@@ -74,6 +74,12 @@ else
   backup_one "$hammerspoon_dir/tiler.lua"
   backup_one "$hammerspoon_dir/mission-control.lua"
   backup_one "$hammerspoon_dir/clipboard.lua"
+  backup_one "$hammerspoon_dir/focus.lua"
+  backup_one "$hammerspoon_dir/settings.lua"
+  backup_one "$hammerspoon_dir/json.lua"
+  backup_one "$hammerspoon_dir/settings.default.json"
+  backup_one "$hammerspoon_dir/settings.schema.json"
+  backup_one "$hammerspoon_dir/settings-ui.html"
   backup_one "$ghostty_dst"
   backup_one "$HOME/.config/zed/themes/catppuccin.json"
   backup_one "$zed_settings"
@@ -119,6 +125,12 @@ deploy_hammerspoon() {
   deploy "config/tiler.lua"            "$hammerspoon_dir/tiler.lua"
   deploy "config/mission-control.lua"  "$hammerspoon_dir/mission-control.lua"
   deploy "config/clipboard.lua"        "$hammerspoon_dir/clipboard.lua"
+  deploy "config/focus.lua"            "$hammerspoon_dir/focus.lua"
+  deploy "config/settings.lua"         "$hammerspoon_dir/settings.lua"
+  deploy "config/json.lua"             "$hammerspoon_dir/json.lua"
+  deploy "config/settings.default.json" "$hammerspoon_dir/settings.default.json"
+  deploy "config/settings.schema.json" "$hammerspoon_dir/settings.schema.json"
+  deploy "config/settings-ui.html"     "$hammerspoon_dir/settings-ui.html"
   deploy "config/mocha.png"            "$hammerspoon_dir/omarchy-assets/mocha.png"
   deploy "config/latte.png"            "$hammerspoon_dir/omarchy-assets/latte.png"
   deploy "config/catppuccin-zed.json"  "$HOME/.config/zed/themes/catppuccin.json"
@@ -161,6 +173,15 @@ deploy_ghostty() {
 
 deploy_hammerspoon
 deploy_ghostty
+
+# --------------------------------------------------------------- settings
+# settings.json is user-owned: never deployed or overwritten, only validated.
+if [[ -x "$project_dir/bin/macomarchy" ]]; then
+  if ! "$project_dir/bin/macomarchy" config validate >/dev/null 2>&1; then
+    log "WARNING: ~/.config/mac-omarchy/settings.json is invalid"
+    log "         fix it with: $project_dir/bin/macomarchy config edit"
+  fi
+fi
 
 # ------------------------------------------------------------ editor merge
 # Merge only the keys from config/editor-appearance.json; preserve other
@@ -305,8 +326,26 @@ if (( dry_run )); then
   log "would check Hammerspoon Accessibility and reload its config"
 else
   hs_bin=$(command -v hs || true)
-  if [[ -n "$hs_bin" ]]; then
-    if [[ "$("$hs_bin" -c 'hs.accessibilityState()' 2>/dev/null || true)" != "true" ]]; then
+  hs_running() { pgrep -x Hammerspoon >/dev/null 2>&1; }
+  # The deployed init.lua loads hs.ipc; an instance started from an older config
+  # cannot be reached over the CLI until it is restarted.
+  ipc_ready() {
+    hs_running && [[ -n "$hs_bin" ]] && "$hs_bin" -t 1 -q -c 'return true' >/dev/null 2>&1
+  }
+  restart_hammerspoon() {
+    osascript -e 'with timeout of 5 seconds
+      tell application "Hammerspoon" to quit
+    end timeout' >/dev/null 2>&1 || true
+    for _ in {1..25}; do hs_running || break; sleep 0.2; done
+    hs_running && pkill -x Hammerspoon >/dev/null 2>&1 || true
+    sleep 0.5
+    open -g -a Hammerspoon >/dev/null 2>&1 || true
+    [[ -n "$hs_bin" ]] || return 0
+    for _ in {1..40}; do ipc_ready && break; sleep 0.25; done
+  }
+  check_accessibility() {
+    ipc_ready || return 0
+    if [[ "$("$hs_bin" -t 2 -q -c 'return tostring(hs.accessibilityState())' 2>/dev/null || true)" != "true" ]]; then
       log "Hammerspoon needs Accessibility: System Settings → Privacy & Security → Accessibility"
       open "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility" >/dev/null 2>&1 || true
       if (( ! assume_yes )) && [[ -t 0 ]]; then
@@ -315,11 +354,33 @@ else
         log "non-interactive: continuing without waiting for Accessibility"
       fi
     fi
-    "$hs_bin" -c 'hs.reload()' >/dev/null 2>&1 || open -g -a Hammerspoon || true
-    log "Hammerspoon reload requested"
+  }
+
+  restarted=0
+  if ! ipc_ready; then
+    log "restarting Hammerspoon so the deployed config (and hs.ipc) is loaded"
+    restart_hammerspoon
+    restarted=1
+  fi
+  check_accessibility
+  if (( restarted )); then
+    if [[ -z "$hs_bin" ]]; then
+      log "hs CLI not found; opened Hammerspoon — use its Reload Config command"
+    elif ipc_ready; then
+      log "Hammerspoon restarted"
+    else
+      log "could not reach Hammerspoon; use its Reload Config command"
+    fi
   else
-    open -g -a Hammerspoon >/dev/null 2>&1 || true
-    log "hs CLI not found; opened Hammerspoon — use its Reload Config command if needed"
+    # hs.reload() replaces the Lua state, so the CLI connection always drops;
+    # the port comes back once the new init.lua loads hs.ipc.
+    "$hs_bin" -t 5 -q -c 'hs.reload()' >/dev/null 2>&1 || true
+    for _ in {1..20}; do ipc_ready && break; sleep 0.25; done
+    if ipc_ready; then
+      log "Hammerspoon reloaded"
+    else
+      log "reload requested; use its Reload Config command if the new configuration is not active"
+    fi
   fi
 fi
 

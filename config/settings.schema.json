@@ -1,0 +1,912 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://macomarchy.local/settings.schema.json",
+  "title": "MacOmarchy settings",
+  "description": "Runtime settings for the Hammerspoon tiling, desktop, focus and clipboard modules. Defaults live in settings.default.json; the user file stores only changed values.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "ui",
+    "shortcuts",
+    "tiler",
+    "desktops",
+    "focus",
+    "clipboard"
+  ],
+  "properties": {
+    "ui": {
+      "title": "General",
+      "description": "Application-wide notifications. The tiling exclude list remains local state.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-class": "runtime",
+      "x-order": [
+        "alerts",
+        "alertDuration"
+      ],
+      "required": [
+        "alerts",
+        "alertDuration"
+      ],
+      "properties": {
+        "alerts": {
+          "title": "Show notifications",
+          "description": "Show Hammerspoon alerts for layout, desktop, clipboard and window actions.",
+          "type": "boolean"
+        },
+        "alertDuration": {
+          "title": "Notification duration",
+          "description": "How long a notification stays on screen, in seconds.",
+          "type": "number",
+          "minimum": 1,
+          "maximum": 10,
+          "x-unit": "s",
+          "x-step": 0.5
+        }
+      }
+    },
+    "shortcuts": {
+      "title": "Shortcuts",
+      "description": "Keyboard shortcuts owned by MacOmarchy. Pick a group to narrow the list, then click a shortcut and press the new combination; use Disable to turn one off (None). Native macOS shortcuts (Mission Control, Spotlight, input sources) stay in System Settings. Desktop and move-window entries above desktops.maxNumber are inactive until a reload.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-class": "runtime",
+      "x-order": [
+        "layout_next",
+        "layout_previous",
+        "layout_tall",
+        "layout_wide",
+        "layout_single",
+        "layout_floating",
+        "layout_show",
+        "layout_reflow",
+        "window_toggle_floating",
+        "tiling_toggle",
+        "window_swap_previous",
+        "window_swap_next",
+        "window_previous_monitor",
+        "window_next_monitor",
+        "window_swap_main",
+        "tiler_shrink_main",
+        "tiler_expand_main",
+        "focus_left",
+        "focus_right",
+        "focus_up",
+        "focus_down",
+        "focus_toggle",
+        "launch_ghostty",
+        "launch_finder",
+        "launch_browser",
+        "app_exclude",
+        "desktop_1",
+        "desktop_2",
+        "desktop_3",
+        "desktop_4",
+        "desktop_5",
+        "desktop_6",
+        "desktop_7",
+        "desktop_8",
+        "desktop_9",
+        "window_move_1",
+        "window_move_2",
+        "window_move_3",
+        "window_move_4",
+        "window_move_5",
+        "window_move_6",
+        "window_move_7",
+        "window_move_8",
+        "window_move_9",
+        "menu_commands",
+        "menu_commands_alt",
+        "settings_open",
+        "clipboard_history"
+      ],
+      "required": [
+        "layout_next",
+        "layout_previous",
+        "layout_tall",
+        "layout_wide",
+        "layout_single",
+        "layout_floating",
+        "layout_show",
+        "layout_reflow",
+        "window_toggle_floating",
+        "tiling_toggle",
+        "window_swap_previous",
+        "window_swap_next",
+        "window_previous_monitor",
+        "window_next_monitor",
+        "window_swap_main",
+        "tiler_shrink_main",
+        "tiler_expand_main",
+        "focus_left",
+        "focus_right",
+        "focus_up",
+        "focus_down",
+        "focus_toggle",
+        "launch_ghostty",
+        "launch_finder",
+        "launch_browser",
+        "app_exclude",
+        "desktop_1",
+        "desktop_2",
+        "desktop_3",
+        "desktop_4",
+        "desktop_5",
+        "desktop_6",
+        "desktop_7",
+        "desktop_8",
+        "desktop_9",
+        "window_move_1",
+        "window_move_2",
+        "window_move_3",
+        "window_move_4",
+        "window_move_5",
+        "window_move_6",
+        "window_move_7",
+        "window_move_8",
+        "window_move_9",
+        "menu_commands",
+        "menu_commands_alt",
+        "settings_open",
+        "clipboard_history"
+      ],
+      "properties": {
+        "layout_next": {
+          "title": "Layout \u2014 next",
+          "description": "Switch to the next layout in the enabled list.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Layout"
+        },
+        "layout_previous": {
+          "title": "Layout \u2014 previous",
+          "description": "Switch to the previous layout in the enabled list.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Layout"
+        },
+        "layout_tall": {
+          "title": "Layout \u2014 Tall",
+          "description": "Apply the Tall layout.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Layout"
+        },
+        "layout_wide": {
+          "title": "Layout \u2014 Wide",
+          "description": "Apply the Wide layout.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Layout"
+        },
+        "layout_single": {
+          "title": "Layout \u2014 single window",
+          "description": "Fill the screen with the focused window.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Layout"
+        },
+        "layout_floating": {
+          "title": "Layout \u2014 floating",
+          "description": "Stop tiling the focused window.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Layout"
+        },
+        "layout_show": {
+          "title": "Layout \u2014 show current",
+          "description": "Show the current layout name.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Layout"
+        },
+        "layout_reflow": {
+          "title": "Layout \u2014 reflow",
+          "description": "Re-apply tiling immediately.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Layout"
+        },
+        "window_toggle_floating": {
+          "title": "Window \u2014 toggle floating",
+          "description": "Pin or unpin the focused window from the tiling layout.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Window"
+        },
+        "tiling_toggle": {
+          "title": "Tiling \u2014 enable / disable",
+          "description": "Turn automatic tiling on or off.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Window"
+        },
+        "window_swap_previous": {
+          "title": "Window \u2014 swap with previous",
+          "description": "Swap the focused window with the previous tile.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Window"
+        },
+        "window_swap_next": {
+          "title": "Window \u2014 swap with next",
+          "description": "Swap the focused window with the next tile.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Window"
+        },
+        "window_previous_monitor": {
+          "title": "Window \u2014 previous display",
+          "description": "Move the focused window to the previous display.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Window"
+        },
+        "window_next_monitor": {
+          "title": "Window \u2014 next display",
+          "description": "Move the focused window to the next display.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Window"
+        },
+        "window_swap_main": {
+          "title": "Window \u2014 swap with main",
+          "description": "Swap the focused window with the main pane.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Window"
+        },
+        "tiler_shrink_main": {
+          "title": "Tall/Wide \u2014 shrink main pane",
+          "description": "Make the main pane smaller.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Window"
+        },
+        "tiler_expand_main": {
+          "title": "Tall/Wide \u2014 expand main pane",
+          "description": "Make the main pane larger.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Window"
+        },
+        "focus_left": {
+          "title": "Focus \u2014 left",
+          "description": "Focus the nearest window to the left.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Focus"
+        },
+        "focus_right": {
+          "title": "Focus \u2014 right",
+          "description": "Focus the nearest window to the right.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Focus"
+        },
+        "focus_up": {
+          "title": "Focus \u2014 up",
+          "description": "Focus the nearest window above.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Focus"
+        },
+        "focus_down": {
+          "title": "Focus \u2014 down",
+          "description": "Focus the nearest window below.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Focus"
+        },
+        "focus_toggle": {
+          "title": "Focus \u2014 follow the pointer",
+          "description": "Turn focus-follows-the-pointer on or off.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Focus"
+        },
+        "launch_ghostty": {
+          "title": "Ghostty \u2014 terminal",
+          "description": "Launch or focus Ghostty.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Applications"
+        },
+        "launch_finder": {
+          "title": "Finder \u2014 files",
+          "description": "Launch or focus Finder.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Applications"
+        },
+        "launch_browser": {
+          "title": "Browser \u2014 Google Chrome",
+          "description": "Launch or focus Google Chrome.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Applications"
+        },
+        "app_exclude": {
+          "title": "App \u2014 exclude from tiling",
+          "description": "Keep the focused app out of automatic tiling.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Applications"
+        },
+        "desktop_1": {
+          "title": "Desktop \u2014 1",
+          "description": "Switch to Desktop 1 on the display under the pointer.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Desktops"
+        },
+        "desktop_2": {
+          "title": "Desktop \u2014 2",
+          "description": "Switch to Desktop 2 on the display under the pointer.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Desktops"
+        },
+        "desktop_3": {
+          "title": "Desktop \u2014 3",
+          "description": "Switch to Desktop 3 on the display under the pointer.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Desktops"
+        },
+        "desktop_4": {
+          "title": "Desktop \u2014 4",
+          "description": "Switch to Desktop 4 on the display under the pointer.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Desktops"
+        },
+        "desktop_5": {
+          "title": "Desktop \u2014 5",
+          "description": "Switch to Desktop 5 on the display under the pointer.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Desktops"
+        },
+        "desktop_6": {
+          "title": "Desktop \u2014 6",
+          "description": "Switch to Desktop 6 on the display under the pointer.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Desktops"
+        },
+        "desktop_7": {
+          "title": "Desktop \u2014 7",
+          "description": "Switch to Desktop 7 on the display under the pointer.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Desktops"
+        },
+        "desktop_8": {
+          "title": "Desktop \u2014 8",
+          "description": "Switch to Desktop 8 on the display under the pointer.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Desktops"
+        },
+        "desktop_9": {
+          "title": "Desktop \u2014 9",
+          "description": "Switch to Desktop 9 on the display under the pointer.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Desktops"
+        },
+        "window_move_1": {
+          "title": "Window \u2014 move to Desktop 1",
+          "description": "Move the focused window to Desktop 1, creating it if needed.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Move window"
+        },
+        "window_move_2": {
+          "title": "Window \u2014 move to Desktop 2",
+          "description": "Move the focused window to Desktop 2, creating it if needed.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Move window"
+        },
+        "window_move_3": {
+          "title": "Window \u2014 move to Desktop 3",
+          "description": "Move the focused window to Desktop 3, creating it if needed.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Move window"
+        },
+        "window_move_4": {
+          "title": "Window \u2014 move to Desktop 4",
+          "description": "Move the focused window to Desktop 4, creating it if needed.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Move window"
+        },
+        "window_move_5": {
+          "title": "Window \u2014 move to Desktop 5",
+          "description": "Move the focused window to Desktop 5, creating it if needed.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Move window"
+        },
+        "window_move_6": {
+          "title": "Window \u2014 move to Desktop 6",
+          "description": "Move the focused window to Desktop 6, creating it if needed.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Move window"
+        },
+        "window_move_7": {
+          "title": "Window \u2014 move to Desktop 7",
+          "description": "Move the focused window to Desktop 7, creating it if needed.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Move window"
+        },
+        "window_move_8": {
+          "title": "Window \u2014 move to Desktop 8",
+          "description": "Move the focused window to Desktop 8, creating it if needed.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Move window"
+        },
+        "window_move_9": {
+          "title": "Window \u2014 move to Desktop 9",
+          "description": "Move the focused window to Desktop 9, creating it if needed.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Move window"
+        },
+        "menu_commands": {
+          "title": "Commands \u2014 menu",
+          "description": "Open the MacOmarchy command palette.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Menu & clipboard"
+        },
+        "menu_commands_alt": {
+          "title": "Commands \u2014 menu (alternate)",
+          "description": "Alternate key for the command palette.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Menu & clipboard"
+        },
+        "settings_open": {
+          "title": "Settings \u2014 MacOmarchy",
+          "description": "Open this settings window.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Menu & clipboard"
+        },
+        "clipboard_history": {
+          "title": "Clipboard \u2014 history",
+          "description": "Open the clipboard history chooser.",
+          "type": "string",
+          "x-format": "shortcut",
+          "x-group": "Menu & clipboard"
+        }
+      }
+    },
+    "tiler": {
+      "title": "Tiling",
+      "description": "Automatic tiling, window geometry, new-window placement, the layout cycle and retry behaviour. The Excluded apps tab lists apps that stay out of the layout; built-in exclusions are always kept, while remembered exclusions can be included again.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-class": "runtime",
+      "x-order": [
+        "enabled",
+        "gap",
+        "margin",
+        "tolerance",
+        "newWindowPosition",
+        "layout",
+        "ratio",
+        "ratioMin",
+        "ratioMax",
+        "resizeStep",
+        "debounce",
+        "maxAttempts",
+        "fallbackScan",
+        "layouts"
+      ],
+      "required": [
+        "enabled",
+        "gap",
+        "margin",
+        "tolerance",
+        "newWindowPosition",
+        "layout",
+        "ratio",
+        "ratioMin",
+        "ratioMax",
+        "resizeStep",
+        "debounce",
+        "maxAttempts",
+        "fallbackScan",
+        "layouts"
+      ],
+      "properties": {
+        "enabled": {
+          "title": "Automatic tiling",
+          "description": "Arrange standard windows automatically. Turning it off leaves every window where it is until it is enabled again.",
+          "type": "boolean"
+        },
+        "gap": {
+          "title": "Gap between windows",
+          "description": "Space between adjacent tiled windows, in pixels.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 64,
+          "x-unit": "px",
+          "x-step": 1
+        },
+        "margin": {
+          "title": "Outer margin",
+          "description": "Space kept between the working area edge and the tiled windows, in pixels.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 64,
+          "x-unit": "px",
+          "x-step": 1
+        },
+        "tolerance": {
+          "title": "Geometry tolerance",
+          "description": "How many pixels a window may differ from its target before it is moved again. Raise it for apps with rounded or constrained frames.",
+          "type": "number",
+          "minimum": 1,
+          "maximum": 20,
+          "x-unit": "px",
+          "x-step": 1
+        },
+        "newWindowPosition": {
+          "title": "New window position",
+          "description": "Where a newly tiled window joins the order. Front makes it the main pane; end appends it after the existing windows.",
+          "type": "string",
+          "enum": [
+            "end",
+            "front"
+          ]
+        },
+        "layout": {
+          "title": "Default layout",
+          "description": "Layout used for a desktop that has not been arranged yet.",
+          "type": "string",
+          "enum": [
+            "tall",
+            "wide",
+            "fullscreen",
+            "floating"
+          ]
+        },
+        "ratio": {
+          "title": "Main pane ratio",
+          "description": "Share of the working area given to the main pane in Tall and Wide layouts.",
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 0.9,
+          "x-step": 0.05
+        },
+        "ratioMin": {
+          "title": "Smallest main pane",
+          "description": "Lower bound for the main pane ratio when shrinking with the keyboard.",
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 0.9,
+          "x-step": 0.05
+        },
+        "ratioMax": {
+          "title": "Largest main pane",
+          "description": "Upper bound for the main pane ratio when expanding with the keyboard.",
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 0.9,
+          "x-step": 0.05
+        },
+        "resizeStep": {
+          "title": "Resize step",
+          "description": "How much one shrink or expand key press changes the main pane ratio.",
+          "type": "number",
+          "minimum": 0.01,
+          "maximum": 0.25,
+          "x-step": 0.01
+        },
+        "debounce": {
+          "title": "Reflow debounce",
+          "description": "Quiet period that merges a burst of window events into one tiling pass, in seconds.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "x-unit": "s",
+          "x-step": 0.01
+        },
+        "maxAttempts": {
+          "title": "Resize attempts",
+          "description": "How many times a window that rejects its target size is asked again before the next event or a reflow.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "fallbackScan": {
+          "title": "Fallback scan interval",
+          "description": "Period of the safety scan that catches missed window notifications, in seconds.",
+          "type": "number",
+          "minimum": 1,
+          "maximum": 60,
+          "x-unit": "s",
+          "x-step": 1
+        },
+        "layouts": {
+          "title": "Layout cycle",
+          "description": "Order used by the next and previous layout commands.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "tall",
+              "wide",
+              "fullscreen",
+              "floating"
+            ]
+          }
+        }
+      }
+    },
+    "desktops": {
+      "title": "Desktops",
+      "description": "Native Space navigation, creation, polling and scroll gesture timing.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-class": "runtime",
+      "x-order": [
+        "settleDelay",
+        "scrollLock",
+        "transitionTimeout",
+        "creationTimeout",
+        "pollInterval",
+        "checkInterval",
+        "focusDelay",
+        "maxNumber"
+      ],
+      "required": [
+        "settleDelay",
+        "scrollLock",
+        "transitionTimeout",
+        "creationTimeout",
+        "pollInterval",
+        "checkInterval",
+        "focusDelay",
+        "maxNumber"
+      ],
+      "properties": {
+        "settleDelay": {
+          "title": "Transition settle time",
+          "description": "Quiet period after a desktop change before tiling resumes, in seconds.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2,
+          "x-unit": "s",
+          "x-step": 0.05
+        },
+        "scrollLock": {
+          "title": "Scroll gesture lock",
+          "description": "How long one Cmd+scroll notch is allowed to switch a desktop before the next one counts, in seconds.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 5,
+          "x-unit": "s",
+          "x-step": 0.1
+        },
+        "transitionTimeout": {
+          "title": "Transition timeout",
+          "description": "How long a desktop switch or window move may take before it is reported as failed, in seconds.",
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 10,
+          "x-unit": "s",
+          "x-step": 0.5
+        },
+        "creationTimeout": {
+          "title": "Creation timeout",
+          "description": "How long Mission Control may take to create one desktop before the operation is abandoned, in seconds.",
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 15,
+          "x-unit": "s",
+          "x-step": 0.5
+        },
+        "pollInterval": {
+          "title": "Transition poll interval",
+          "description": "How often the active desktop is checked while a switch or window move runs, in seconds. Lower is smoother but uses more CPU.",
+          "type": "number",
+          "minimum": 0.01,
+          "maximum": 0.2,
+          "x-unit": "s",
+          "x-step": 0.01
+        },
+        "checkInterval": {
+          "title": "Verification interval",
+          "description": "How often window membership and Mission Control results are verified, in seconds.",
+          "type": "number",
+          "minimum": 0.05,
+          "maximum": 0.5,
+          "x-unit": "s",
+          "x-step": 0.01
+        },
+        "focusDelay": {
+          "title": "Focus handoff delay",
+          "description": "Pause after a desktop switch before focusing a window on the new desktop, in seconds.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "x-unit": "s",
+          "x-step": 0.05
+        },
+        "maxNumber": {
+          "title": "Highest desktop number",
+          "description": "Largest desktop number accepted by a window move. The command menu is rebuilt on the next Hammerspoon reload.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9,
+          "x-class": "reload"
+        }
+      }
+    },
+    "focus": {
+      "title": "Focus follows pointer",
+      "description": "Hover timing and text-field behaviour for focusing the window under the pointer.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-class": "runtime",
+      "x-order": [
+        "enabled",
+        "delay",
+        "slop",
+        "clickTextFields",
+        "fieldRetryDelay"
+      ],
+      "required": [
+        "enabled",
+        "delay",
+        "slop",
+        "clickTextFields",
+        "fieldRetryDelay"
+      ],
+      "properties": {
+        "enabled": {
+          "title": "Focus follows pointer",
+          "description": "Focus the window under the resting pointer. The choice is mirrored to focus-follows-mouse.txt for older configurations.",
+          "type": "boolean"
+        },
+        "delay": {
+          "title": "Hover delay",
+          "description": "How long the pointer must rest on a window before it is focused, in seconds.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2,
+          "x-unit": "s",
+          "x-step": 0.01
+        },
+        "slop": {
+          "title": "Movement threshold",
+          "description": "Pointer movement that counts as leaving the resting position, in pixels.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "x-unit": "px",
+          "x-step": 1
+        },
+        "clickTextFields": {
+          "title": "Click text fields when needed",
+          "description": "If the accessibility focus request does not move the caret, click the text field under the pointer once. Disable to avoid synthetic clicks.",
+          "type": "boolean"
+        },
+        "fieldRetryDelay": {
+          "title": "Text field retry delay",
+          "description": "Wait before checking the text field again after focusing its window, in seconds.",
+          "type": "number",
+          "minimum": 0.05,
+          "maximum": 1,
+          "x-unit": "s",
+          "x-step": 0.01
+        }
+      }
+    },
+    "clipboard": {
+      "title": "Clipboard history",
+      "description": "How much text and image history is kept, and how the chooser behaves.",
+      "type": "object",
+      "additionalProperties": false,
+      "x-class": "runtime",
+      "x-order": [
+        "maxItems",
+        "maxImageMB",
+        "storeImages",
+        "previewSize",
+        "pollInterval",
+        "saveDelay",
+        "chooserRows",
+        "pasteDelay"
+      ],
+      "required": [
+        "maxItems",
+        "maxImageMB",
+        "storeImages",
+        "previewSize",
+        "pollInterval",
+        "saveDelay",
+        "chooserRows",
+        "pasteDelay"
+      ],
+      "properties": {
+        "maxItems": {
+          "title": "History size",
+          "description": "Number of clipboard entries kept before the oldest is dropped.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "maxImageMB": {
+          "title": "Largest archived image",
+          "description": "Images larger than this stay on the system clipboard and are not archived, in megabytes.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1024,
+          "x-unit": "MB"
+        },
+        "storeImages": {
+          "title": "Archive images",
+          "description": "Copy images into the clipboard history. Disable to keep text entries only; existing image entries stay until they age out.",
+          "type": "boolean"
+        },
+        "previewSize": {
+          "title": "Thumbnail size",
+          "description": "Longest edge of newly archived preview images in the clipboard chooser, in pixels.",
+          "type": "integer",
+          "minimum": 32,
+          "maximum": 256,
+          "x-unit": "px"
+        },
+        "pollInterval": {
+          "title": "Pasteboard poll interval",
+          "description": "How often the clipboard change counter is checked, in seconds. Lower is more responsive but uses more CPU.",
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 2,
+          "x-unit": "s",
+          "x-step": 0.1
+        },
+        "saveDelay": {
+          "title": "History save delay",
+          "description": "Quiet period before the history file is written, in seconds.",
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 3,
+          "x-unit": "s",
+          "x-step": 0.1
+        },
+        "chooserRows": {
+          "title": "Chooser rows",
+          "description": "Number of clipboard entries visible at once in the chooser.",
+          "type": "integer",
+          "minimum": 3,
+          "maximum": 20
+        },
+        "pasteDelay": {
+          "title": "Paste delay",
+          "description": "Pause after restoring an entry before sending Cmd+V, in seconds.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "x-unit": "s",
+          "x-step": 0.01
+        }
+      }
+    }
+  }
+}

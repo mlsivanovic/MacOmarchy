@@ -1,4 +1,5 @@
 -- Clipboard history stores pictures as images and leaves real text as text.
+package.path = "config/?.lua;" .. package.path
 local root = "/tmp/mac-omarchy-clipboard-test"
 os.execute('rm -rf "' .. root .. '" && mkdir -p "' .. root .. '/clipboard-images"')
 
@@ -173,6 +174,16 @@ local notes = M.capture()
 check(notes.kind == "text" and notes.text == root .. "/notes.txt", "a non-image file stays a path")
 check(reads.image == 0, "a document copy does not archive the Finder icon")
 
+local savedStoreImages = M.STORE_IMAGES
+M.STORE_IMAGES = false
+use({ types = { "public.png" }, data = { ["public.png"] = "NOSTORE" } })
+check(M.capture() == nil, "images are not archived when archiving is disabled")
+use({ types = { "public.png", "public.utf8-plain-text" }, text = "caption", data = { ["public.png"] = "NOSTORE" } })
+local captionOnly = M.capture()
+check(captionOnly and captionOnly.kind == "text" and captionOnly.text == "caption",
+    "text next to a disabled image is still archived")
+M.STORE_IMAGES = savedStoreImages
+
 local savedMaxBytes = M.MAX_BYTES
 M.MAX_BYTES = 4
 use({ types = { "public.png" }, data = { ["public.png"] = "12345" } })
@@ -252,6 +263,7 @@ check(choices[2].text == "Image 3×4" and choices[2].image ~= nil, "image rows s
 check(choices[2].subText:find("PNG", 1, true) and choices[2].subText:find("cap", 1, true), "image rows name the format and label")
 
 local chooserFn, hotkeyFn, pasteFn
+local hotkeyMods, hotkeyKey
 local savedJson
 hs.json = {
     read = function() return { { kind = "image", file = "../secret.png" }, "kept" } end,
@@ -269,10 +281,28 @@ hs.chooser = { new = function(fn)
         choices = function() end, show = function() end, delete = function() end,
     }
 end }
-hs.hotkey = { bind = function(_, _, fn) hotkeyFn = fn; return { delete = function() end } end }
+hs.hotkey = { bind = function(mods, key, fn)
+    hotkeyMods, hotkeyKey, hotkeyFn = mods, key, fn
+    return { delete = function() end }
+end }
 hs.alerts = {}
 use({ types = { "public.utf8-plain-text" }, text = "should-not-seed", count = 7 })
 M.start()
+check(hotkeyMods[1] == "ctrl" and hotkeyKey == "v", "clipboard starts on the configured default shortcut")
+local S = require("settings")
+S.values.shortcuts.clipboard_history = "ctrl+alt+u"
+M.applySettings()
+check(hotkeyMods[1] == "ctrl" and hotkeyMods[2] == "alt" and hotkeyKey == "u", "clipboard rebinds live")
+S.values.shortcuts.clipboard_history = "none"
+M.applySettings()
+check(M.hotkey == nil and hs_clipboard.hotkey == nil, "None disables the clipboard shortcut")
+S.values.shortcuts.clipboard_history = "ctrl+v"
+M.applySettings()
+check(hotkeyMods[1] == "ctrl" and hotkeyKey == "v", "clipboard can be re-enabled")
+M.suspendHotkey()
+check(M.hotkey == nil and M.captureSuspended == true, "recording suspends the clipboard shortcut")
+M.resumeHotkey()
+check(M.hotkey ~= nil and M.captureSuspended == false, "finishing recording restores the clipboard shortcut")
 check(M.history[1].text == "kept" and #M.history == 1, "startup drops a path-traversal image record")
 check(savedJson and savedJson[1] == "kept", "startup rewrites history after dropping a bad record")
 check(M.lastChange == 7, "startup remembers the pasteboard change count")

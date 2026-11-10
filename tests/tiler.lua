@@ -1,4 +1,5 @@
 local timerAPI,advance=dofile("tests/timers.lua")()
+package.path = "config/?.lua;" .. package.path
 -- Behavioral tests: desktop isolation, lifecycle and cross-display placement.
 local windows, focused, held={},nil,false
 local screens={}
@@ -143,6 +144,7 @@ windows={kp,only};E.groups={};E.reflow()
 assert(only.f.w==1912 and kp.f.w==600,'built-in exclude skips KeePassXC')
 assert(E.toggleApp('org.keepassxc.keepassxc','KeePassXC')=='builtin')
 assert(E.userExcluded['org.keepassxc.keepassxc']==nil,'built-in exclude cannot be removed')
+assert(E.isBuiltin('com.apple.systempreferences'),'legacy System Settings bundle stays excluded')
 
 local dir=os.tmpname();os.remove(dir)
 local path=dir..'/tiling-excludes.json'
@@ -155,15 +157,43 @@ assert(E.loadExcludes()==true)
 assert(E.userExcluded['us.zoom.xos']=='Zoom' and E.userExcluded['com.example.App']=='Weird "Name"'
     and E.userExcluded.leftover==nil,'exclude file round-trips names and replaces memory')
 local saved=E.userExcluded
+assert(E.includeApp('us.zoom.xos')=='tiled' and E.userExcluded['us.zoom.xos']==nil,
+    'a remembered exclusion can be included again')
 local corrupt=io.open(path,'w');corrupt:write('{');corrupt:close()
 assert(E.loadExcludes()==false and E.userExcluded==saved,'invalid exclude file keeps the previous list')
 os.remove(path);os.remove(dir)
 E._excludesFile=nil
 local listed=E.excludedApps()
 assert(listed[1].builtin==false and listed[#listed].builtin==true,'user excludes sort before built-ins')
+local seen={}
+for _,app in ipairs(listed) do
+    if app.builtin then
+        assert(not seen[app.name],'built-in exclusions are listed once per app name')
+        seen[app.name]=true
+    end
+end
 -- An earlier schedule expedites a pending later pass instead of being merged away.
 advance(0.3)
 local scansBefore=scans
 E.schedule(0.2);E.schedule();advance(0.05)
 assert(scans==scansBefore+1,'earlier schedule expedites the pending reflow')
+
+-- New windows can join at the front (main pane) or at the end.
+local S=require('settings')
+local savedPosition=S.values.tiler.newWindowPosition
+local function fresh()
+    windows={};E.groups={};E.screens={};E.floating={};E.targets={};E.attempts={}
+    left.space=10
+end
+S.values.tiler.newWindowPosition='front'
+fresh()
+window(301,left);E.reflow()
+window(302,left);E.reflow()
+assert(E.groups['display-1:10'].order[1]==302,'front makes the new window the main pane')
+S.values.tiler.newWindowPosition='end'
+fresh()
+window(301,left);E.reflow()
+window(302,left);E.reflow()
+assert(E.groups['display-1:10'].order[1]==301,'end keeps the existing main pane')
+S.values.tiler.newWindowPosition=savedPosition
 print('PASS: tiling lifecycle, ordering, scheduling and constrained geometry')

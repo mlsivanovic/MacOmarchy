@@ -6,7 +6,14 @@
 -- A TIFF next to a sentence is only a preview of that text, so the text is kept.
 -- Copying an image file reads the file. Finder's TIFF icon is not the picture.
 
+local S = require("settings")
 local M = { MAX_HISTORY = 100, MAX_BYTES = 32 * 1024 * 1024 }
+M.MAX_HISTORY = S.get("clipboard.maxItems")
+M.MAX_BYTES = S.get("clipboard.maxImageMB") * 1024 * 1024
+M.STORE_IMAGES = S.get("clipboard.storeImages", true) ~= false
+M.PREVIEW_SIZE = S.get("clipboard.previewSize", 72)
+M.POLL_INTERVAL = S.get("clipboard.pollInterval", 0.4)
+M.HOTKEY_COMBO = S.get("shortcuts.clipboard_history", "ctrl+v")
 
 local RAW = {
     { uti = "public.png", ext = "png" },
@@ -171,9 +178,10 @@ function M.writeThumb(image, path)
     if type(image) ~= "table" and type(image) ~= "userdata" then return false end
     local w, h = M.dimensions(image)
     local target = image
-    if w and h and (w > 72 or h > 72) then
+    local limit = tonumber(M.PREVIEW_SIZE) or 72
+    if w and h and (w > limit or h > limit) then
         if type(image.setSize) ~= "function" then return false end
-        local scale = math.min(72 / w, 72 / h)
+        local scale = math.min(limit / w, limit / h)
         local ok, scaled = pcall(function()
             return image:setSize({
                 w = math.max(1, math.floor(w * scale)),
@@ -339,7 +347,7 @@ function M.capture()
     if types["public.file-url"] then
         local path = M.filePath(readURL())
         if path then
-            local image = storeFileIfImage(path)
+            local image = M.STORE_IMAGES ~= false and storeFileIfImage(path) or nil
             if image then
                 image.label = M.capLabel(text)
                 return image
@@ -349,14 +357,14 @@ function M.capture()
             return { kind = "text", text = path }
         end
     end
-    if hasPrimary(types) then
+    if M.STORE_IMAGES ~= false and hasPrimary(types) then
         local image = storePrimary(types)
         if image then
             image.label = M.capLabel(text)
             return image
         end
     end
-    if (hasPreview(types) or not next(types)) and M.textIsSecondary(text) then
+    if M.STORE_IMAGES ~= false and (hasPreview(types) or not next(types)) and M.textIsSecondary(text) then
         local image = storeRendered()
         if image then
             image.label = M.capLabel(text)
@@ -580,7 +588,7 @@ end
 
 function M.scheduleSave()
     if M.saveTimer then M.saveTimer:stop() end
-    M.saveTimer = hs.timer.doAfter(0.5, function()
+    M.saveTimer = hs.timer.doAfter(S.get("clipboard.saveDelay", 0.5), function()
         M.saveTimer = nil
         if M.history then M.save(M.historyPath(), M.history) end
     end)
@@ -593,8 +601,60 @@ function M.stop()
     if M.chooser then pcall(function() M.chooser:delete() end); M.chooser = nil end
 end
 
+function M.poll()
+    if M.paused then return end
+    local count = hs.pasteboard.changeCount()
+    if count == M.lastChange then return end
+    M.lastChange = count
+    local ok, added = pcall(M.ingest, M.history)
+    if not ok then
+        S.alert("Clipboard history: " .. tostring(added):gsub("%s+", " "):sub(1, 120))
+        return
+    end
+    if added then M.scheduleSave() end
+end
+
+function M.openChooser()
+    if not M.chooser then return end
+    if #M.history == 0 then
+        S.alert("Clipboard history is empty")
+        return
+    end
+    M.chooser:choices(M.choices(M.history))
+    M.chooser:show()
+end
+
+function M.suspendHotkey()
+    M.captureSuspended = true
+    if M.hotkey then pcall(function() M.hotkey:delete() end); M.hotkey = nil end
+    if hs_clipboard then hs_clipboard.hotkey = nil end
+end
+
+function M.resumeHotkey()
+    M.captureSuspended = false
+    if M.chooser then M.bindHotkey() end
+end
+
+function M.bindHotkey()
+    if M.hotkey then pcall(function() M.hotkey:delete() end); M.hotkey = nil end
+    local combo = S.get("shortcuts.clipboard_history", M.HOTKEY_COMBO or "ctrl+v")
+    M.HOTKEY_COMBO = combo
+    if S.isShortcutDisabled(combo) then
+        if hs_clipboard then hs_clipboard.hotkey = nil end
+        return
+    end
+    local modifiers, key = S.parseShortcut(combo)
+    if not modifiers or not key then return end
+    local ok, hotkey = pcall(hs.hotkey.bind, modifiers, key, function() M.openChooser() end)
+    if ok and hotkey then
+        M.hotkey = hotkey
+        if hs_clipboard then hs_clipboard.hotkey = hotkey end
+    end
+end
+
 function M.start()
     M.stop()
+    M.captureSuspended = false
     if type(hs_clipboard) == "table" then
         if hs_clipboard.watcher then pcall(function() hs_clipboard.watcher:stop() end) end
         if hs_clipboard.hotkey then pcall(function() hs_clipboard.hotkey:delete() end) end
@@ -613,18 +673,7 @@ function M.start()
     end
     M.lastChange = hs.pasteboard.changeCount()
     M.paused = false
-    M.watcher = hs.timer.doEvery(0.4, function()
-        if M.paused then return end
-        local count = hs.pasteboard.changeCount()
-        if count == M.lastChange then return end
-        M.lastChange = count
-        local ok, added = pcall(M.ingest, M.history)
-        if not ok then
-            hs.alert.show("Clipboard history: " .. tostring(added):gsub("%s+", " "):sub(1, 120))
-            return
-        end
-        if added then M.scheduleSave() end
-    end)
+    M.watcher = hs.timer.doEvery(M.POLL_INTERVAL, M.poll)
     M.chooser = hs.chooser.new(function(choice)
         if not choice or type(choice.entry) ~= "table" then return end
         M.paused = true
@@ -633,25 +682,51 @@ function M.start()
         M.lastChange = hs.pasteboard.changeCount()
         if not ok or not restored then
             local message = choice.entry.kind == "image" and "Image file is missing" or "Could not restore that item"
-            hs.alert.show(message)
+            S.alert(message)
             return
         end
         M.deleteFiles(M.add(M.history, choice.entry))
         M.scheduleSave()
-        hs.timer.doAfter(0.12, function() hs.eventtap.keyStroke({"cmd"}, "v") end)
+        hs.timer.doAfter(S.get("clipboard.pasteDelay", 0.12), function() hs.eventtap.keyStroke({"cmd"}, "v") end)
     end)
     M.chooser:searchSubText(true)
-    M.chooser:rows(9)
+    M.chooser:rows(S.get("clipboard.chooserRows", 9))
     M.chooser:placeholderText("Search history (text and images)...")
-    M.hotkey = hs.hotkey.bind({"ctrl"}, "v", function()
-        if #M.history == 0 then
-            hs.alert.show("Clipboard history is empty")
-            return
-        end
-        M.chooser:choices(M.choices(M.history))
-        M.chooser:show()
-    end)
+    M.bindHotkey()
     hs_clipboard = { watcher = M.watcher, hotkey = M.hotkey, chooser = M.chooser }
+end
+
+-- Re-read limits and drop entries that no longer fit the configured history.
+function M.applySettings()
+    M.MAX_HISTORY = S.get("clipboard.maxItems")
+    M.MAX_BYTES = S.get("clipboard.maxImageMB") * 1024 * 1024
+    M.STORE_IMAGES = S.get("clipboard.storeImages", true) ~= false
+    M.PREVIEW_SIZE = S.get("clipboard.previewSize", 72)
+    local interval = S.get("clipboard.pollInterval", 0.4)
+    if M.watcher and interval ~= M.POLL_INTERVAL then
+        M.watcher:stop()
+        M.POLL_INTERVAL = interval
+        M.watcher = hs.timer.doEvery(interval, M.poll)
+        if hs_clipboard then hs_clipboard.watcher = M.watcher end
+    else
+        M.POLL_INTERVAL = interval
+    end
+    if M.chooser and M.chooser.rows then
+        pcall(function() M.chooser:rows(S.get("clipboard.chooserRows", 9)) end)
+    end
+    local combo = S.get("shortcuts.clipboard_history", M.HOTKEY_COMBO or "ctrl+v")
+    if combo ~= M.HOTKEY_COMBO then
+        M.HOTKEY_COMBO = combo
+        if M.chooser and not M.captureSuspended then M.bindHotkey() end
+    end
+    if not M.history or #M.history <= M.MAX_HISTORY then return end
+    local removed = {}
+    while #M.history > M.MAX_HISTORY do
+        local old = table.remove(M.history)
+        for _, name in ipairs(M.filesOf(old)) do removed[#removed + 1] = name end
+    end
+    M.deleteFiles(removed)
+    M.scheduleSave()
 end
 
 return M

@@ -1,0 +1,690 @@
+#!/usr/bin/env python3
+"""MacOmarchy settings CLI.
+
+Reads and writes ~/.config/mac-omarchy/settings.json, validates it against
+config/settings.schema.json, and can ask a running Hammerspoon to re-apply the
+result. Only the Python standard library is used.
+"""
+from __future__ import annotations
+
+import argparse
+import copy
+import json
+import math
+import os
+import plistlib
+import shlex
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+DEFAULTS_PATH = ROOT / "config" / "settings.default.json"
+SCHEMA_PATH = ROOT / "config" / "settings.schema.json"
+
+
+def die(message: str) -> "NoReturn":
+    print(f"macomarchy: {message}", file=sys.stderr)
+    raise SystemExit(1)
+
+
+def read_json(path: Path):
+    try:
+        return json.loads(path.read_text())
+    except FileNotFoundError:
+        die(f"{path}: file not found")
+    except json.JSONDecodeError as exc:
+        die(f"{path}: {exc}")
+
+
+def split_path(path: str) -> list[str]:
+    return [part for part in path.split(".") if part]
+
+
+def get_path(root, path: str):
+    node = root
+    for key in split_path(path):
+        if not isinstance(node, dict) or key not in node:
+            return None
+        node = node[key]
+    return node
+
+
+def set_path(root: dict, path: str, value) -> bool:
+    parts = split_path(path)
+    if not parts:
+        return False
+    node = root
+    for key in parts[:-1]:
+        if not isinstance(node.get(key), dict):
+            node[key] = {}
+        node = node[key]
+    node[parts[-1]] = value
+    return True
+
+
+def unset_path(root: dict, path: str) -> bool:
+    parts = split_path(path)
+    if not parts:
+        return False
+
+    def remove(node: dict, index: int) -> bool:
+        key = parts[index]
+        if index == len(parts) - 1:
+            node.pop(key, None)
+            return not node
+        if not isinstance(node.get(key), dict):
+            return False
+        if remove(node[key], index + 1):
+            node.pop(key, None)
+        return not node
+
+    remove(root, 0)
+    return True
+
+
+def deep_merge(base, overlay):
+    if not isinstance(base, dict) or not isinstance(overlay, dict):
+        return copy.deepcopy(overlay)
+    merged = copy.deepcopy(base)
+    for key, value in overlay.items():
+        merged[key] = deep_merge(base.get(key), value)
+    return merged
+
+
+def flatten(value, prefix: str = "") -> list[tuple[str, object]]:
+    if isinstance(value, dict):
+        items: list[tuple[str, object]] = []
+        for key, child in value.items():
+            items.extend(flatten(child, f"{prefix}.{key}" if prefix else key))
+        return items
+    return [(prefix, value)]
+
+
+def schema_at(schema, path: str):
+    node = schema
+    for key in split_path(path):
+        if not isinstance(node, dict):
+            return None
+        node = node.get("properties", {}).get(key)
+        if node is None:
+            return None
+    return node
+
+
+def type_name(value) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, (int, float)):
+        return "number"
+    if isinstance(value, str):
+        return "string"
+    if isinstance(value, list):
+        return "array"
+    if isinstance(value, dict):
+        return "object"
+    return type(value).__name__
+
+
+def matches_type(value, expected: str) -> bool:
+    if expected == "number":
+        return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+    if expected == "integer":
+        if isinstance(value, bool):
+            return False
+        if isinstance(value, int):
+            return True
+        return isinstance(value, float) and value.is_integer()
+    if expected == "string":
+        return isinstance(value, str)
+    if expected == "boolean":
+        return isinstance(value, bool)
+    if expected == "object":
+        return isinstance(value, dict)
+    if expected == "array":
+        return isinstance(value, list)
+    return True
+
+
+def validate_node(value, schema: dict, path: str, errors: list[str]) -> None:
+    label = path or "settings"
+    if value is None:
+        errors.append(f"{label}: null is not allowed")
+        return
+    expected = schema.get("type")
+    if expected and not matches_type(value, expected):
+        errors.append(f"{label}: expected {expected}, got {type_name(value)}")
+        return
+
+    if expected == "object":
+        properties = schema.get("properties", {})
+        for key in schema.get("required", []):
+            if key not in value:
+                errors.append(f"{path + '.' if path else ''}{key}: required setting is missing")
+        for key, child in properties.items():
+            if key in value:
+                validate_node(value[key], child, f"{path}.{key}" if path else key, errors)
+        if schema.get("additionalProperties") is False:
+            for key in value:
+                if key not in properties:
+                    errors.append(f"{path + '.' if path else ''}{key}: unknown setting")
+    elif expected == "array":
+        if "minItems" in schema and len(value) < schema["minItems"]:
+            errors.append(f"{path}: expected at least {schema['minItems']} item(s)")
+        if "maxItems" in schema and len(value) > schema["maxItems"]:
+            errors.append(f"{path}: expected at most {schema['maxItems']} item(s)")
+        if schema.get("uniqueItems"):
+            seen = set()
+            for item in value:
+                marker = json.dumps(item, sort_keys=True)
+                if marker in seen:
+                    errors.append(f"{path}: duplicate item {item}")
+                    break
+                seen.add(marker)
+        item_schema = schema.get("items")
+        if item_schema:
+            for index, item in enumerate(value):
+                validate_node(item, item_schema, f"{path}[{index}]", errors)
+    else:
+        if "minimum" in schema and isinstance(value, (int, float)) and value < schema["minimum"]:
+            errors.append(f"{path}: must be at least {schema['minimum']}")
+        if "maximum" in schema and isinstance(value, (int, float)) and value > schema["maximum"]:
+            errors.append(f"{path}: must be at most {schema['maximum']}")
+        if "enum" in schema and value not in schema["enum"]:
+            errors.append(f"{path}: must be one of {', '.join(map(str, schema['enum']))}")
+
+
+SHORTCUT_MODIFIER_ORDER = ["cmd", "ctrl", "alt", "shift"]
+SHORTCUT_MODIFIER_ALIASES = {
+    "command": "cmd", "cmd": "cmd",
+    "control": "ctrl", "ctrl": "ctrl",
+    "option": "alt", "opt": "alt", "alt": "alt",
+    "shift": "shift",
+}
+SHORTCUT_KEY_ALIASES = {
+    "enter": "return", "return": "return",
+    "esc": "escape", "escape": "escape",
+    "spacebar": "space", "space": "space",
+    "del": "delete", "delete": "delete",
+    "backspace": "backspace", "tab": "tab",
+    "left": "left", "right": "right", "up": "up", "down": "down",
+    "home": "home", "end": "end",
+    "pageup": "pageup", "pagedown": "pagedown",
+    "insert": "insert", "help": "help",
+}
+for _index in range(1, 21):
+    SHORTCUT_KEY_ALIASES[f"f{_index}"] = f"f{_index}"
+
+
+def shortcut_disabled(value) -> bool:
+    return isinstance(value, str) and "".join(value.lower().split()) == "none"
+
+
+def shortcut_key(value):
+    key = str(value or "").lower()
+    key = SHORTCUT_KEY_ALIASES.get(key, key)
+    if len(key) == 1:
+        if key in ("+", " "):
+            return None
+        return key
+    return SHORTCUT_KEY_ALIASES.get(key)
+
+
+def parse_shortcut(value):
+    if not isinstance(value, str):
+        return None
+    raw = "".join(value.lower().split())
+    if raw in ("", "none"):
+        return None
+    modifiers: list[str] = []
+    seen: set[str] = set()
+    key = None
+    for part in raw.split("+"):
+        if not part:
+            return None
+        modifier = SHORTCUT_MODIFIER_ALIASES.get(part)
+        if modifier:
+            if modifier in seen:
+                return None
+            seen.add(modifier)
+            modifiers.append(modifier)
+        else:
+            if key is not None:
+                return None
+            key = shortcut_key(part)
+            if not key:
+                return None
+    if not key:
+        return None
+    if not any(item in seen for item in ("cmd", "ctrl", "alt")):
+        if not (key.startswith("f") and key[1:].isdigit()):
+            return None
+    return [item for item in SHORTCUT_MODIFIER_ORDER if item in seen], key
+
+
+def format_shortcut(modifiers, key):
+    if not isinstance(modifiers, (list, tuple)):
+        return None
+    seen = set()
+    for modifier in modifiers:
+        canonical = SHORTCUT_MODIFIER_ALIASES.get(str(modifier).lower())
+        if not canonical:
+            return None
+        seen.add(canonical)
+    normalized = shortcut_key(key)
+    if not normalized:
+        return None
+    if not any(item in seen for item in ("cmd", "ctrl", "alt")):
+        if not (normalized.startswith("f") and normalized[1:].isdigit()):
+            return None
+    parts = [item for item in SHORTCUT_MODIFIER_ORDER if item in seen]
+    parts.append(normalized)
+    return "+".join(parts)
+
+
+def cross_field_shortcuts(config: dict, errors: list[str]) -> None:
+    shortcuts = config.get("shortcuts") if isinstance(config, dict) else None
+    if not isinstance(shortcuts, dict):
+        return
+    seen: dict[str, str] = {}
+    for shortcut_id in sorted(shortcuts):
+        value = shortcuts[shortcut_id]
+        if not isinstance(value, str) or shortcut_disabled(value):
+            continue
+        parsed = parse_shortcut(value)
+        if not parsed:
+            errors.append(
+                f"shortcuts.{shortcut_id}: invalid shortcut (use modifiers+key or none)")
+            continue
+        canonical = format_shortcut(*parsed)
+        if canonical in seen:
+            errors.append(
+                f"shortcuts.{shortcut_id}: conflicts with shortcuts.{seen[canonical]} ({canonical})")
+        else:
+            seen[canonical] = shortcut_id
+
+
+def cross_field(config: dict, errors: list[str]) -> None:
+    tiler = config.get("tiler") if isinstance(config, dict) else None
+    if not isinstance(tiler, dict):
+        return
+    ratio_min = tiler.get("ratioMin")
+    ratio_max = tiler.get("ratioMax")
+    ratio = tiler.get("ratio")
+    if isinstance(ratio_min, (int, float)) and isinstance(ratio_max, (int, float)) and ratio_min >= ratio_max:
+        errors.append("tiler.ratioMin: must be smaller than tiler.ratioMax")
+    if (isinstance(ratio, (int, float)) and isinstance(ratio_min, (int, float))
+            and isinstance(ratio_max, (int, float)) and not (ratio_min <= ratio <= ratio_max)):
+        errors.append("tiler.ratio: must be between tiler.ratioMin and tiler.ratioMax")
+    layouts = tiler.get("layouts")
+    if isinstance(layouts, list) and tiler.get("layout") not in layouts:
+        errors.append("tiler.layout: must be one of tiler.layouts")
+
+
+def validate(config, schema) -> list[str]:
+    errors: list[str] = []
+    validate_node(config, schema, "", errors)
+    cross_field(config, errors)
+    cross_field_shortcuts(config, errors)
+    return errors
+
+
+def load_all(args) -> tuple[dict, dict, dict, dict]:
+    defaults = read_json(DEFAULTS_PATH)
+    schema = read_json(SCHEMA_PATH)
+    default_errors = validate(defaults, schema)
+    if default_errors:
+        die("invalid defaults:\n  " + "\n  ".join(default_errors))
+    path = user_path(args)
+    user: dict = {}
+    if path.exists():
+        try:
+            user = json.loads(path.read_text())
+        except json.JSONDecodeError as exc:
+            die(f"{path}: {exc}")
+        if not isinstance(user, dict):
+            die(f"{path}: the top-level value must be an object")
+    merged = deep_merge(defaults, user)
+    return defaults, schema, user, merged
+
+
+def user_path(args) -> Path:
+    if args.config_dir:
+        return Path(args.config_dir).expanduser() / "settings.json"
+    override = os.environ.get("MACOMARCHY_SETTINGS")
+    if override:
+        return Path(override).expanduser()
+    return Path.home() / ".config" / "mac-omarchy" / "settings.json"
+
+
+def save_user(path: Path, user: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(user, indent=2, sort_keys=True, ensure_ascii=False, allow_nan=False) + "\n"
+    handle, temporary = tempfile.mkstemp(prefix=".settings.", dir=str(path.parent))
+    try:
+        with os.fdopen(handle, "w") as stream:
+            stream.write(text)
+        os.replace(temporary, path)
+    except Exception:
+        try:
+            os.unlink(temporary)
+        except OSError:
+            pass
+        raise
+
+
+def format_value(value) -> str:
+    if isinstance(value, str):
+        return value
+    return json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+
+def parse_value(text: str):
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return text
+
+
+def print_errors(errors: list[str]) -> None:
+    for error in errors:
+        print(f"macomarchy: {error}", file=sys.stderr)
+
+
+def command_get(args) -> int:
+    _, _, _, merged = load_all(args)
+    value = get_path(merged, args.path)
+    if value is None:
+        die(f"unknown setting: {args.path}")
+    print(json.dumps(value, ensure_ascii=False, sort_keys=True) if args.json else format_value(value))
+    return 0
+
+
+def command_set(args) -> int:
+    defaults, schema, user, _ = load_all(args)
+    if schema_at(schema, args.path) is None:
+        die(f"unknown setting: {args.path}")
+    value = parse_value(args.value)
+    if args.path.startswith("shortcuts.") and isinstance(value, str):
+        if shortcut_disabled(value):
+            value = "none"
+        else:
+            parsed = parse_shortcut(value)
+            if parsed:
+                value = format_shortcut(*parsed)
+    candidate = copy.deepcopy(user)
+    if not set_path(candidate, args.path, value):
+        die("a setting path is required")
+    merged = deep_merge(defaults, candidate)
+    errors = validate(merged, schema)
+    if errors:
+        print_errors(errors)
+        return 1
+    save_user(user_path(args), candidate)
+    print(f"{args.path} = {format_value(get_path(merged, args.path))}")
+    return 0
+
+
+def command_unset(args) -> int:
+    defaults, schema, user, _ = load_all(args)
+    candidate = copy.deepcopy(user)
+    unset_path(candidate, args.path)
+    merged = deep_merge(defaults, candidate)
+    errors = validate(merged, schema)
+    if errors:
+        print_errors(errors)
+        return 1
+    save_user(user_path(args), candidate)
+    print(f"{args.path} reset to {format_value(get_path(merged, args.path))}")
+    return 0
+
+
+def command_list(args) -> int:
+    defaults, _, user, merged = load_all(args)
+    source = user if args.changed else merged
+    if args.json:
+        print(json.dumps(source, indent=2, sort_keys=True, ensure_ascii=False))
+        return 0
+    rows = flatten(source)
+    if not rows:
+        print("(no overrides)" if args.changed else "(no settings)")
+        return 0
+    for path, value in sorted(rows):
+        print(f"{path} = {format_value(value)}")
+    return 0
+
+
+def command_diff(args) -> int:
+    defaults, _, user, _ = load_all(args)
+    rows = flatten(user)
+    if not rows:
+        print("No overrides; everything uses defaults.")
+        return 0
+    for path, value in sorted(rows):
+        print(f"{path}: {format_value(get_path(defaults, path))} -> {format_value(value)}")
+    return 0
+
+
+def command_validate(args) -> int:
+    path = user_path(args)
+    defaults, schema, user, merged = load_all(args)
+    errors = validate(merged, schema)
+    if errors:
+        print_errors(errors)
+        return 1
+    if not path.exists():
+        print(f"{path} does not exist; defaults are valid")
+    else:
+        print(f"{path} is valid ({len(flatten(user))} override(s))")
+    return 0
+
+
+def command_edit(args) -> int:
+    path = user_path(args)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        save_user(path, {})
+    editor = os.environ.get("VISUAL") or os.environ.get("EDITOR") or "vi"
+    try:
+        result = subprocess.run([*shlex.split(editor), str(path)])
+    except FileNotFoundError:
+        die(f"editor not found: {editor}")
+    if result.returncode != 0:
+        return result.returncode
+    return command_validate(args)
+
+
+def command_reset(args) -> int:
+    path = user_path(args)
+    if path.exists() and not args.yes:
+        die("refusing to reset without --yes")
+    save_user(path, {})
+    print(f"reset {path} to defaults")
+    return 0
+
+
+def command_path(args) -> int:
+    print(user_path(args))
+    return 0
+
+
+def run(command: list[str], timeout: float = 4.0):
+    try:
+        return subprocess.run(command, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+
+def doctor(args) -> int:
+    defaults = read_json(DEFAULTS_PATH)
+    schema = read_json(SCHEMA_PATH)
+    default_errors = validate(defaults, schema)
+    path = user_path(args)
+    user_errors: list[str] = []
+    user = {}
+    if path.exists():
+        try:
+            user = json.loads(path.read_text())
+            if not isinstance(user, dict):
+                user_errors = ["the top-level value must be an object"]
+        except json.JSONDecodeError as exc:
+            user_errors = [str(exc)]
+    merged = deep_merge(defaults, user) if not user_errors else defaults
+    settings_errors = user_errors or validate(merged, schema)
+    failures = bool(default_errors or settings_errors)
+
+    def line(ok: bool, label: str, detail: str = "") -> None:
+        mark = "ok" if ok else "!"
+        print(f"[{mark}] {label}{(' — ' + detail) if detail else ''}")
+
+    print("MacOmarchy doctor")
+    line(not default_errors, "defaults and schema", "; ".join(default_errors) if default_errors else "valid")
+    if path.exists():
+        line(not settings_errors, "settings file", "; ".join(settings_errors) if settings_errors else str(path))
+    else:
+        line(True, "settings file", "not present; defaults are used")
+    print(f"      settings path: {path}")
+
+    version = run(["sw_vers", "-productVersion"])
+    if version and version.returncode == 0:
+        print(f"      macOS {version.stdout.strip()}")
+
+    hs = shutil.which("hs")
+    running = run(["pgrep", "-x", "Hammerspoon"])
+    hammerspoon = bool(running and running.returncode == 0)
+    line(hammerspoon, "Hammerspoon running")
+    line(bool(hs), "hs CLI", hs or "not found")
+    if hs and hammerspoon:
+        ipc = run([hs, "-t", "1", "-q", "-c", "return true"])
+        line(bool(ipc and ipc.returncode == 0), "Hammerspoon IPC")
+        accessibility = run([hs, "-t", "2", "-q", "-c", "return tostring(hs.accessibilityState())"])
+        state = accessibility.stdout.strip() if accessibility and accessibility.returncode == 0 else ""
+        line(state == "true", "Hammerspoon Accessibility", state or "unknown")
+
+    spaces = run(["defaults", "read", "com.apple.spaces", "spans-displays"])
+    spans = spaces.stdout.strip() if spaces and spaces.returncode == 0 else "unknown"
+    line(spans in ("0", "false"), "Displays have separate Spaces", spans)
+    dock = run(["defaults", "read", "com.apple.dock", "mru-spaces"])
+    mru = dock.stdout.strip() if dock and dock.returncode == 0 else "unknown"
+    line(mru in ("0", "false"), "Spaces do not reorder by recent use", mru)
+
+    hotkeys_path = Path.home() / "Library" / "Preferences" / "com.apple.symbolichotkeys.plist"
+    if hotkeys_path.exists():
+        try:
+            with hotkeys_path.open("rb") as stream:
+                keys = plistlib.load(stream).get("AppleSymbolicHotKeys", {})
+            enabled = all(keys.get(str(k), {}).get("enabled") is True for k in (79, 80, 81))
+            freed = all(keys.get(str(k), {}).get("enabled") is False for k in (28, 30))
+            line(enabled, "Move left/right a space enabled")
+            line(freed, "Cmd+Shift+3/4 freed for window moves")
+        except Exception as exc:  # plistlib raises several unrelated types
+            line(False, "symbolic hotkeys", str(exc))
+    else:
+        line(False, "symbolic hotkeys", f"{hotkeys_path} missing")
+
+    module = Path.home() / ".hammerspoon" / "bin" / "space-move.so"
+    line(module.exists(), "native space-move module", str(module))
+    ui = Path.home() / ".hammerspoon" / "settings-ui.html"
+    line(ui.exists(), "settings window", str(ui))
+
+    agents = run(["launchctl", "list"])
+    listing = agents.stdout if agents and agents.returncode == 0 else ""
+    for label in ("local.mac-omarchy.hammerspoon", "local.mac-omarchy.ghostty"):
+        line(label in listing, f"LaunchAgent {label}")
+
+    return 1 if failures else 0
+
+
+def command_apply(args) -> int:
+    hs = shutil.which("hs")
+    if not hs:
+        die("hs CLI not found; install Hammerspoon and its command line tool")
+    script = ("local ok, err = omarchy and omarchy.applySettings and omarchy.applySettings(); "
+              "if not ok then error(tostring(err and err[1] or 'could not apply settings')) end; return true")
+    result = run([hs, "-t", "5", "-q", "-c", script], timeout=6)
+    if not result or result.returncode != 0:
+        die("Hammerspoon did not apply the settings; is it running?")
+    print("settings applied")
+    return 0
+
+
+def command_ui(args) -> int:
+    hs = shutil.which("hs")
+    if not hs:
+        die("hs CLI not found; install Hammerspoon and its command line tool")
+    script = ("if not (omarchy and omarchy.showSettings) then error('settings window is unavailable') end; "
+              "omarchy.showSettings(); return true")
+    result = run([hs, "-t", "5", "-q", "-c", script], timeout=6)
+    if not result or result.returncode != 0:
+        die("could not open the settings window; is Hammerspoon running?")
+    print("settings window opened")
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="macomarchy", description="MacOmarchy settings")
+    parser.add_argument("--config-dir", help="override ~/.config/mac-omarchy")
+    commands = parser.add_subparsers(dest="command", required=True)
+
+    config = commands.add_parser("config", help="read and write settings")
+    sub = config.add_subparsers(dest="config_command", required=True)
+
+    get = sub.add_parser("get", help="print one effective value")
+    get.add_argument("path")
+    get.add_argument("--json", action="store_true")
+    get.set_defaults(handler=command_get)
+
+    set_value = sub.add_parser("set", help="store one override")
+    set_value.add_argument("path")
+    set_value.add_argument("value", help="JSON scalar or string")
+    set_value.set_defaults(handler=command_set)
+
+    unset = sub.add_parser("unset", help="remove one override")
+    unset.add_argument("path")
+    unset.set_defaults(handler=command_unset)
+
+    listing = sub.add_parser("list", help="print effective values")
+    listing.add_argument("--changed", action="store_true", help="only stored overrides")
+    listing.add_argument("--json", action="store_true")
+    listing.set_defaults(handler=command_list)
+
+    diff = sub.add_parser("diff", help="show overrides against defaults")
+    diff.set_defaults(handler=command_diff)
+
+    validate_cmd = sub.add_parser("validate", help="validate the settings file")
+    validate_cmd.set_defaults(handler=command_validate)
+
+    edit = sub.add_parser("edit", help="open the file in $EDITOR")
+    edit.set_defaults(handler=command_edit)
+
+    reset = sub.add_parser("reset", help="remove every override")
+    reset.add_argument("--yes", action="store_true")
+    reset.set_defaults(handler=command_reset)
+
+    path = sub.add_parser("path", help="print the settings file path")
+    path.set_defaults(handler=command_path)
+
+    commands.add_parser("doctor", help="check permissions, Spaces and settings")
+    commands.add_parser("apply", help="re-apply settings in a running Hammerspoon")
+    commands.add_parser("ui", help="open the settings window")
+    return parser
+
+
+def main(argv=None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.command == "doctor":
+        return doctor(args)
+    if args.command == "apply":
+        return command_apply(args)
+    if args.command == "ui":
+        return command_ui(args)
+    return args.handler(args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -33,6 +33,11 @@ function C.close()
     closingSince=now
     hs.spaces.toggleMissionControl()
 end
+function C.isOpen()
+    if not modern then return false end
+    local ok, open = pcall(function() return #displays() > 0 end)
+    return ok and open == true
+end
 function C.add(screen)
     if not modern then return hs.spaces.addSpaceToScreen(screen,false) end
     local expected=screen:fullFrame()

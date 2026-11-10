@@ -1,4 +1,5 @@
 local alerts={}
+package.path = "config/?.lua;" .. package.path
 local timerAPI,advance=dofile("tests/timers.lua")()
 local screens={}
 local function screen(id,x,spaces,active)
@@ -200,4 +201,18 @@ drain()
 assert(gotA==D.userSpaces(left)[6] and gotB==D.userSpaces(left)[7],'both queued creations complete in order')
 assert(additions==additionsBefore2+2 and closedMC==closedBefore+2,'each creation batch closes Mission Control once')
 assert(not D.creating,'creation lock released after the queue drains')
+-- A broken native bridge must not stop the config from loading; movement
+-- falls back to the public API.
+local fallback=0
+hs.spaces.moveWindowToSpace=function(id,space) fallback=fallback+1;w.space=space;return true end
+package.loadlib=function() error('dlopen failed') end
+local D2=dofile('config/desktops.lua')
+package.loadlib=originalLoadlib
+assert(D2 and D2.moveToSpace,'config loads when the bridge cannot be loaded')
+focused=w;w.space=10;D2.moveToSpace(w,12);drain()
+assert(fallback==1 and w.space==12,'public API used when the bridge is unavailable')
+package.loadlib=function() return function() error('missing symbol') end end
+local D3=dofile('config/desktops.lua')
+package.loadlib=originalLoadlib
+assert(D3 and D3.moveToSpace,'config loads when the bridge itself errors')
 print('PASS: desktop navigation, transfers, creation, queueing and timing')

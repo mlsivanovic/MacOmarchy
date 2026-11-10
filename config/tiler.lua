@@ -1,13 +1,16 @@
 -- One owner of window geometry. Groups are native display UUID + active Space.
 local desktops = require("desktops")
-local E = {enabled=true, groups={}, floating={}, screens={}, targets={}, errors={}, attempts={}, userExcluded={}}
-local layouts = {"tall", "wide", "fullscreen", "floating"}
+local S = require("settings")
+local E = {enabled=S.get("tiler.enabled", true) ~= false, groups={}, floating={}, screens={}, targets={}, errors={}, attempts={}, userExcluded={}}
 -- These stay out of the layout even when the user list is empty.
 local builtinExcluded = {
     ["org.hammerspoon.Hammerspoon"]="Hammerspoon",
-    ["com.apple.systempreferences"]="System Settings",
     ["com.apple.SystemSettings"]="System Settings",
     ["org.keepassxc.keepassxc"]="KeePassXC",
+}
+-- Older macOS releases expose System Settings under this bundle id.
+local builtinAliases = {
+    ["com.apple.systempreferences"]="System Settings",
 }
 local function key(screen, space) return screen:getUUID() .. ":" .. tostring(space) end
 local function currentGroup()
@@ -15,7 +18,8 @@ local function currentGroup()
     local s=(w and w:screen()) or hs.mouse.getCurrentScreen() or hs.screen.mainScreen()
     if not s then return end
     local k=key(s,hs.spaces.activeSpaceOnScreen(s))
-    E.groups[k]=E.groups[k] or {order={},layout="tall",ratio=0.5}
+    local t=S.get("tiler")
+    E.groups[k]=E.groups[k] or {order={},layout=t.layout,ratio=t.ratio}
     return E.groups[k],s,w
 end
 local function onSpace(window, space)
@@ -29,11 +33,14 @@ local function manageable(w)
     return true
 end
 local function different(a,b)
-    return math.abs(a.x-b.x)>2 or math.abs(a.y-b.y)>2 or math.abs(a.w-b.w)>2 or math.abs(a.h-b.h)>2
+    local tolerance=S.get("tiler.tolerance")
+    return math.abs(a.x-b.x)>tolerance or math.abs(a.y-b.y)>tolerance
+        or math.abs(a.w-b.w)>tolerance or math.abs(a.h-b.h)>tolerance
 end
 local function rects(frame,n,layout,ratio)
-    local gap=4
-    local f={x=frame.x+gap,y=frame.y+gap,w=frame.w-2*gap,h=frame.h-2*gap}
+    local t=S.get("tiler")
+    local gap,margin=t.gap,t.margin
+    local f={x=frame.x+margin,y=frame.y+margin,w=frame.w-2*margin,h=frame.h-2*margin}
     if n==1 or layout=="fullscreen" then
         local out={};for i=1,n do out[i]={x=f.x,y=f.y,w=f.w,h=f.h} end;return out
     end
@@ -56,7 +63,7 @@ end
 -- An earlier request expedites the pending pass; a later one does not
 -- postpone it.
 function E.schedule(delay)
-    delay=delay or 0.04
+    delay=delay or S.get("tiler.debounce")
     local due=hs.timer.secondsSinceEpoch()+delay
     if E.pending then
         if E.pendingDue and E.pendingDue<=due then return end
@@ -125,8 +132,9 @@ function E.reflow()
         end
     end
     E.targets={}
+    local t=S.get("tiler")
     for k,bucket in pairs(buckets) do
-        local g=E.groups[k] or {order={},layout="tall",ratio=0.5}
+        local g=E.groups[k] or {order={},layout=t.layout,ratio=t.ratio}
         E.groups[k]=g
         local order,present={},{}
         for _,id in ipairs(g.order) do
@@ -135,7 +143,11 @@ function E.reflow()
         local added={}
         for id in pairs(bucket.windows) do if not present[id] then table.insert(added,id) end end
         table.sort(added)
-        for _,id in ipairs(added) do table.insert(order,id) end
+        if S.get("tiler.newWindowPosition")=="front" then
+            for i=#added,1,-1 do table.insert(order,1,added[i]) end
+        else
+            for _,id in ipairs(added) do table.insert(order,id) end
+        end
         g.order=order
         if g.layout~="floating" and #order>0 then
             local frames=rects(bucket.screen:frame(),#order,g.layout,g.ratio)
@@ -149,7 +161,7 @@ function E.reflow()
                     attempt={target=frame,count=0}
                     E.attempts[id]=attempt
                 end
-                if different(actual,frame) and attempt.count<2 then
+                if different(actual,frame) and attempt.count<t.maxAttempts then
                     attempt.count=attempt.count+1
                     local ok,err=pcall(function() w:setFrame(frame,0) end)
                     attempt.actual=w:frame()
@@ -256,7 +268,8 @@ function E.excludesFile()
     return home .. "/.config/mac-omarchy/tiling-excludes.json"
 end
 function E.isBuiltin(bundleID)
-    return bundleID ~= nil and builtinExcluded[bundleID] ~= nil
+    return bundleID ~= nil
+        and (builtinExcluded[bundleID] ~= nil or builtinAliases[bundleID] ~= nil)
 end
 function E.isExcluded(bundleID)
     if not bundleID then return false end
@@ -272,7 +285,7 @@ function E.loadExcludes()
     if not raw or raw:match("^%s*$") then E.userExcluded = {}; return true end
     local data = decodeExcludes(raw)
     if not data then
-        if hs.alert then hs.alert.show("Tiling excludes file is invalid") end
+        S.alert("Tiling excludes file is invalid")
         return false
     end
     local nextMap = {}
@@ -310,12 +323,12 @@ function E.excludedApps()
 end
 function E.toggleApp(bundleID, name)
     if not bundleID or bundleID == "" then
-        hs.alert.show("This application has no bundle id")
+        S.alert("This application has no bundle id")
         return
     end
     name = (name and name ~= "" and name) or bundleID
     if E.isBuiltin(bundleID) then
-        hs.alert.show(name .. " stays excluded")
+        S.alert(name .. " stays excluded")
         return "builtin"
     end
     local message
@@ -328,16 +341,23 @@ function E.toggleApp(bundleID, name)
     end
     local saved = E.saveExcludes()
     E.reflow()
-    hs.alert.show(saved and message or (message .. " · not saved"))
+    S.alert(saved and message or (message .. " · not saved"))
     if not saved then return "unsaved" end
     return E.userExcluded[bundleID] and "excluded" or "tiled"
 end
+function E.includeApp(bundleID)
+    if not bundleID or bundleID == "" then return "missing" end
+    local name = E.userExcluded[bundleID]
+    if not name then return "tiled" end
+    return E.toggleApp(bundleID, name)
+end
+
 function E.toggleFocused(window)
     local w = window
     if not w and hs.window.focusedWindow then w = hs.window.focusedWindow() end
     local app = w and w.application and w:application()
     if not app or not app.bundleID then
-        hs.alert.show("No focused application")
+        S.alert("No focused application")
         return
     end
     return E.toggleApp(app:bundleID(), app.name and app:name() or nil)
@@ -345,27 +365,33 @@ end
 
 function E.setLayout(layout)
     local g=currentGroup();if not g then return end
-    g.layout=layout;E.reflow();hs.alert.show(layout == "tall" and "Tall" or layout)
+    g.layout=layout;E.reflow();S.alert(layout == "tall" and "Tall" or layout)
 end
 function E.cycle(delta)
     local g=currentGroup();if not g then return end
+    local layouts=S.get("tiler.layouts")
     local index=1;for i,l in ipairs(layouts) do if l==g.layout then index=i end end
     E.setLayout(layouts[((index-1+delta)%#layouts)+1])
 end
 function E.toggleFloat()
     local w=hs.window.focusedWindow();if not w then return end
     E.floating[w:id()]=not E.floating[w:id()];E.reflow()
-    hs.alert.show(E.floating[w:id()] and "Floating window" or "Tiled window")
+    S.alert(E.floating[w:id()] and "Floating window" or "Tiled window")
 end
 function E.toggle()
-    E.enabled=not E.enabled;E.reflow();hs.alert.show(E.enabled and "Tiling enabled" or "Tiling disabled")
+    E.enabled=not E.enabled
+    local message=E.enabled and "Tiling enabled" or "Tiling disabled"
+    local saved=S.set("tiler.enabled",E.enabled)
+    E.reflow()
+    S.alert(saved and message or (message .. " · not saved"))
 end
 function E.showLayout()
-    local g=currentGroup();hs.alert.show(E.enabled and (g and g.layout or "tall") or "Tiling disabled")
+    local g=currentGroup();S.alert(E.enabled and (g and g.layout or "tall") or "Tiling disabled")
 end
 function E.resize(delta)
     local g=currentGroup();if not g then return end
-    g.ratio=math.max(0.2,math.min(0.8,g.ratio+delta));E.reflow()
+    local t=S.get("tiler")
+    g.ratio=math.max(t.ratioMin,math.min(t.ratioMax,g.ratio+delta));E.reflow()
 end
 function E.swap(delta,main)
     local g,_,w=currentGroup();if not g or not w then return end
@@ -393,16 +419,30 @@ E.commands={
     w=function() E.setLayout("wide") end,f=function() E.setLayout("fullscreen") end,
     ["shift:f"]=function() E.setLayout("floating") end,t=E.toggleFloat,["shift:t"]=E.toggle,
     i=E.showLayout,r=function() E.attempts={};E.reflow() end,m=function() E.swap(0,true) end,
-    ["-"]=function() E.resize(-0.05) end,["="]=function() E.resize(0.05) end,
+    ["-"]=function() E.resize(-S.get("tiler.resizeStep")) end,["="]=function() E.resize(S.get("tiler.resizeStep")) end,
     ["shift:left"]=function() E.swap(-1) end,["shift:right"]=function() E.swap(1) end,
     ["shift:up"]=function() E.moveMonitor(-1) end,["shift:down"]=function() E.moveMonitor(1) end,
 }
 -- Events drive normal work; this slower scan recovers missed notifications.
-E.timer=hs.timer.doEvery(5,function()
+E.fallbackInterval=S.get("tiler.fallbackScan")
+local function fallbackScan()
     E.windowSource=nil
     E.reflow()
     E.windowSource=E.cachedWindowSource
-end)
+end
+E.timer=hs.timer.doEvery(E.fallbackInterval,fallbackScan)
+
+-- Re-read settings and restart the scan when its interval changed.
+function E.applySettings()
+    E.enabled = S.get("tiler.enabled", true) ~= false
+    local interval=S.get("tiler.fallbackScan")
+    if E.timer and interval~=E.fallbackInterval then
+        E.timer:stop()
+        E.fallbackInterval=interval
+        E.timer=hs.timer.doEvery(interval,fallbackScan)
+    end
+    E.reflow()
+end
 E.loadExcludes()
 E.reflow()
 return E

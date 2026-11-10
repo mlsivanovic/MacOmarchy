@@ -18,6 +18,7 @@ and the default screenshot shortcuts.
 | Cmd + Shift + Return | Google Chrome |
 | Ctrl + Option + Space / K | Searchable command menu |
 | Ctrl + Option + arrows | Focus a neighboring window on the current display |
+| Ctrl + Option + P | Toggle focus follows the pointer (off by default) |
 | Ctrl + Option + L / Shift + L | Next / previous layout |
 | Ctrl + Option + A / W | Tall / Wide |
 | Ctrl + Option + F | Fill the working area with one window |
@@ -36,10 +37,15 @@ and the default screenshot shortcuts.
 | Cmd + middle click | Mission Control |
 | Cmd + Ctrl + scroll | Cycle windows on a display |
 | Ctrl + V | Clipboard history (text and images) |
+| Ctrl + Option + , | Settings window |
 | F12 | Ghostty quick terminal |
 | Cmd + Space | Native Spotlight |
 | Cmd + W | Native window / tab closing |
 | Screenshot in the command menu | Native screenshots / screen recording |
+
+These are defaults. Every MacOmarchy-owned keyboard binding can be changed in
+**Settings → Shortcuts**; native macOS shortcuts, mouse gestures and Ghostty's
+own F12 quick terminal stay where they are.
 
 Cmd+number switches to an existing desktop. Cmd+Shift+number moves the active
 window and follows it. If the destination does not exist, every missing desktop
@@ -58,6 +64,32 @@ creation or move stops the operation and shows a notification.
 
 Cmd+Shift+3/4/5 are reserved for moving windows. Screenshots and recording remain
 available through the command menu or the macOS Screenshot app.
+
+## Focus follows the pointer
+
+Focus follows the pointer is off by default. Turn it on or off with
+Ctrl + Option + P, the command menu action “Focus — follow the pointer”, or the
+menu bar item; the choice is remembered in
+`~/.config/mac-omarchy/focus-follows-mouse.txt` and survives reloads and
+reinstalls. Until it is turned on, moving the pointer does not change focus.
+
+While enabled, resting the pointer on a window for 100 ms focuses that window,
+on every display, and macOS brings it forward. Typing then goes to the window
+under the pointer. A rest on a text field, such as a browser address bar, moves the
+caret into that field. The field is asked to take keyboard focus through
+Accessibility. Browsers often ignore that request without reporting an error,
+so the rest then sends one left click to the field, the same as a manual click.
+A button, link, or image under the pointer is not clicked. An editor that does
+not expose a text field, such as a canvas document, cannot place the caret this
+way. A key pressed in the same instant the pointer arrives can still reach the
+previously focused application, because the activation itself is asynchronous.
+
+The menu bar, the Dock, and empty desktop do not change focus. Focus also waits
+while a mouse button or keyboard modifier is held, while a desktop transition
+or desktop creation is running, and while Mission Control is open. It pauses
+during screen lock and sleep, then waits for fresh pointer movement after
+unlock or wake. Cmd+scroll and Cmd+Ctrl+scroll keep their own targets for the
+whole gesture.
 
 Clipboard history keeps the last 100 items. A copied picture (screenshot, Copy
 Image, or an image file) is stored as an image and pasted back as an image. Text
@@ -111,6 +143,67 @@ The Catppuccin Mocha/Latte menu actions change the system appearance and wallpap
 Ghostty, Zed and VS Code follow the system theme. The font is JetBrainsMono Nerd
 Font Mono. Ghostty and Hammerspoon start at login using local LaunchAgents.
 
+## Settings
+
+Runtime settings live in one place. Defaults are versioned in
+`config/settings.default.json` and described by `config/settings.schema.json`;
+your overrides live at `~/.config/mac-omarchy/settings.json` and contain only the
+values you changed. The file is validated on load and on every write: an invalid
+edit leaves the last good configuration running and reports the offending field.
+
+Open the settings window with **Ctrl + Option + ,**, the **Settings…** menu bar
+item, or the command menu action “Settings — MacOmarchy”. The window is generated
+from the schema and covers General (notifications), Shortcuts, Tiling, Desktops,
+Focus and Clipboard. Tiling and focus-follows-the-pointer each have an on/off
+switch at the top of their tab. Each field has a Reset button, and changes apply
+live: tiling reflows, shortcuts rebind and a watcher picks up edits made from the
+CLI or an editor. `desktops.maxNumber` is marked `reload` because the command
+menu is rebuilt on the next Hammerspoon reload; the other values apply
+immediately. Descriptions live behind a small **ℹ️** button next to each option
+title: hover or focus it to read what the setting does. The **Tiling** tab has
+**Options** and **Excluded apps** sub-tabs; the latter lists built-in and
+remembered exclusions, and remembered ones can be included again.
+
+The **Shortcuts** tab lists every key binding owned by MacOmarchy. Bindings are
+split into sticky sub-tabs (Layout, Window, Focus, Applications, Desktops, Move
+window, Menu & clipboard), so only one group is shown at a time. Click a binding,
+press the new combination, and it is applied immediately; use **Disable** to set
+one to None. A combination already used by another action is rejected with the conflicting
+field named, so two actions cannot silently share a key. Values are canonical
+lowercase strings such as `ctrl+alt+l`, `cmd+shift+return` and `none`. Native macOS
+shortcuts (Mission Control, Spotlight, input sources) are intentionally not listed:
+those stay in System Settings and `doctor` reports their state.
+
+The same file is available from the terminal:
+
+```sh
+./bin/macomarchy config list            # effective values
+./bin/macomarchy config diff            # overrides against defaults
+./bin/macomarchy config get tiler.gap
+./bin/macomarchy config set tiler.gap 6
+./bin/macomarchy config set tiler.newWindowPosition front
+./bin/macomarchy config set shortcuts.layout_next ctrl+alt+j
+./bin/macomarchy config set shortcuts.clipboard_history none
+./bin/macomarchy config set clipboard.pollInterval 0.2
+./bin/macomarchy config unset tiler.gap
+./bin/macomarchy config edit            # $EDITOR, validates on save
+./bin/macomarchy config validate
+./bin/macomarchy doctor                 # permissions, Spaces, agents, settings
+./bin/macomarchy apply                  # re-apply in a running Hammerspoon
+./bin/macomarchy ui                     # open the window
+```
+
+Arrays such as `tiler.layouts` are written as JSON arrays. The tiling and
+focus-follows-the-pointer switches are `tiler.enabled` and `focus.enabled`. Some settings are
+inherently owned by macOS or another app (Dock/Spaces, symbolic hotkeys, Ghostty,
+Zed/VS Code). `doctor` reports those rather than pretending they are runtime
+values, and `install.sh` remains the adapter that applies them. The tiling
+exclude list stays local state in `tiling-excludes.json`; the tiling and
+focus-follows-the-pointer on/off choices are settings, mirrored to their legacy
+state files so older commands keep working. A legacy `on` in
+`focus-follows-mouse.txt` is migrated into `focus.enabled` on the first reload,
+so the CLI and the window agree.
+
 ## Files and setup
 
 Install or re-apply everything with the idempotent installer, and update an
@@ -124,7 +217,8 @@ existing checkout with the updater:
 
 The installer checks prerequisites (Homebrew, `git`, `python3`, Xcode Command
 Line Tools), backs up existing targets (see Backups and rollback), runs
-`brew bundle`, copies the managed files below, merges only the appearance keys
+`brew bundle`, copies the managed files below, validates
+`~/.config/mac-omarchy/settings.json` (it never replaces it), merges only the appearance keys
 from `config/editor-appearance.json` into existing Zed/VS Code settings,
 builds the native module with `bin/build-space-move` (requires Apple's
 command-line developer tools and Hammerspoon in `/Applications`), applies the
@@ -141,7 +235,11 @@ appearance settings into your existing configuration.
 | Source | Active location / purpose |
 |---|---|
 | config/hammerspoon/init.lua | ~/.hammerspoon/init.lua |
-| config/omarchy.lua, desktops.lua, tiler.lua, mission-control.lua, clipboard.lua | ~/.hammerspoon/ |
+| config/omarchy.lua, desktops.lua, tiler.lua, mission-control.lua, clipboard.lua, focus.lua | ~/.hammerspoon/ |
+| config/settings.lua, config/json.lua | ~/.hammerspoon/ (settings resolver and JSON codec) |
+| config/settings.default.json, config/settings.schema.json | ~/.hammerspoon/ (defaults and validation) |
+| config/settings-ui.html | ~/.hammerspoon/settings-ui.html |
+| bin/macomarchy | Settings CLI, run from the checkout |
 | config/hammerspoon/space-move.m | Source for the local native module |
 | bin/build-space-move | Builds ~/.hammerspoon/bin/space-move.so |
 | config/ghostty.config | ~/.config/ghostty/config.ghostty |
@@ -158,11 +256,16 @@ using Hammerspoon's **Reload Config** command.
 Run the behavioral tests with Lua:
 
 ```sh
+lua tests/json.lua
+lua tests/settings.lua
+lua tests/settings-window.lua
 lua tests/tiler.lua
 lua tests/desktops.lua
 lua tests/mission-control.lua
 lua tests/omarchy.lua
 lua tests/clipboard.lua
+lua tests/focus.lua
+./tests/cli.sh
 ```
 
 ## Backups and rollback
@@ -173,8 +276,10 @@ their paths under `home/` and exporting the Dock and symbolic-hotkey plists
 under `plists/`; the latest path is recorded in the gitignored
 `backup-location.txt`. Local state is never overwritten or backed up as a
 replacement target: `~/.hammerspoon/clipboard_history.json`,
-`~/.hammerspoon/clipboard-images/`, and
-`~/.config/mac-omarchy/tiling-excludes.json` are untouched. Clipboard history
+`~/.hammerspoon/clipboard-images/`,
+`~/.config/mac-omarchy/tiling-excludes.json`, and
+`~/.config/mac-omarchy/focus-follows-mouse.txt` are untouched, as is
+`~/.config/mac-omarchy/settings.json` (validated, never replaced). Clipboard history
 is not included in this repository. Image records in the history file point at
 files in `clipboard-images/`. A rollback to a text-only clipboard build leaves
 those records in place; remove them from the history file if that build errors

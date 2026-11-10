@@ -4,10 +4,27 @@
 -- 2. Workspace Overview: Cmd + Middle Click (open Mission Control overview)
 -- 3. Window Cycler:      Cmd + Ctrl + Scroll (cycle windows on the display)
 -- 4. Clipboard Manager:  Ctrl + V (searchable 100-item text and image history)
+-- 5. Focus follows the pointer, after a short hover, on every display
+--    (off by default; toggle with Ctrl + Option + P)
 -- ============================================================================
 
 local spaces = require("hs.spaces")
+
+-- Load the user settings before any module captures a default. Injecting the
+-- module keeps every require("settings") on the same instance even when the
+-- Hammerspoon package path differs from the repository checkout.
+local settings = dofile(hs.configdir .. "/settings.lua")
+package.loaded.settings = settings
+local settingsOk, settingsErrors = settings.configure({userPath = settings.defaultUserPath()})
+if not settingsOk and hs.alert then
+    hs.alert.show("Settings: " .. tostring(settingsErrors and settingsErrors[1] or "invalid settings file"))
+end
+
 local desktops = require("desktops")
+
+-- The `hs` command line tool talks to Hammerspoon over this module; without it
+-- the CLI (used by install.sh) cannot reach a running instance.
+pcall(require, "hs.ipc")
 
 -- ----------------------------------------------------------------------------
 -- SECTION 1: SPACES AND MISSION CONTROL FUNCTIONS
@@ -318,6 +335,9 @@ hs_window_cycler.watchdogTimer = hs.timer.doEvery(5, function()
     if hs_window_cycler.middleClickWatcher and not hs_window_cycler.middleClickWatcher:isEnabled() then
         hs_window_cycler.middleClickWatcher:start()
     end
+    if hs_focus_follow and hs_focus_follow.tap and not hs_focus_follow.tap:isEnabled() then
+        hs_focus_follow.tap:start()
+    end
 end)
 
 
@@ -337,4 +357,41 @@ end
 
 -- ============================================================================
 omarchy = require("omarchy")
+if omarchy.watchSettings then omarchy.watchSettings() end
+
+-- Both command menus are normal windows, so a hover elsewhere would activate
+-- another application and close them mid-typing.
+local function menuOpen()
+    for _, name in ipairs({"omarchy", "clipboard"}) do
+        local owner = package.loaded[name]
+        local chooser = owner and owner.chooser
+        if chooser and chooser.isVisible then
+            local ok, visible = pcall(function() return chooser:isVisible() end)
+            if ok and visible then return true end
+        end
+    end
+    return false
+end
+
+-- Focus follows the pointer is off unless it was explicitly turned on with
+-- Ctrl + Option + P, the command menu, or the menu bar item. The choice is
+-- remembered between reloads; only then is the pointer watcher started.
+local focus = require("focus")
+focus.configure({
+    filter = omarchy.windowFilter,
+    suspended = function() return cycleSession.active or menuOpen() end,
+})
+-- settings.json is authoritative. On the first run after an upgrade, adopt a
+-- legacy "on" choice from focus-follows-mouse.txt and persist it so the CLI and
+-- the settings window agree. A legacy "off" needs no override.
+local explicitFocus = settings.user and settings.user.focus and settings.user.focus.enabled
+if explicitFocus ~= nil then
+    focus.setEnabled(settings.values.focus.enabled == true, true)
+else
+    local focusEnabled = focus.loadEnabled()
+    focus.setEnabled(focusEnabled, false)
+    if focusEnabled and not settings.set("focus.enabled", true) then
+        settings.values.focus.enabled = true
+    end
+end
 hs.alert.show("Hammerspoon + macOS Omarchy are ready!")
